@@ -1,51 +1,48 @@
 #include "SwitchML_m.h"
+#include "Allreducer.h"
 using namespace omnetpp;
-
-#define STACKSIZE    16384
-
-class Allreducer: public cSimpleModule {
-public:
-    Allreducer() :
-            cSimpleModule(STACKSIZE) {
-    }
-    //    virtual void activity() override;
-protected:
-    virtual void initialize() override;
-    virtual void handleMessage(cMessage *msg) override;
-
-private:
-    bool busy { false };
-    void do_one_allreduce();
-    cQueue queue;
-    cGate *serverOutGate;
-    uint64_t num_slots;
-    uint64_t num_updates;
-};
 
 Define_Module(Allreducer);
 
-int f(cObject *a, cObject *b) {
-    return 0;
-}
+//int f(cObject *a, cObject *b) {
+//    return 0;
+//}
 
 void Allreducer::initialize() {
-    queue = std::move(cQueue("queue", f));
+    queue = cQueue("queue"); //, f);
     serverOutGate = getParentModule()->gate("port$o");
-    num_slots = getParentModule()->par("NUM_SLOTS");
-    num_updates = getParentModule()->par("NUM_UPDATES");
+    num_slots = getParentModule()->par("num_slots");
+    num_updates = getParentModule()->par("num_updates");
 
 //    scheduleAt(simTime(), new cMessage);
 }
 
-void Allreducer::do_one_allreduce() {
-    auto m = check_and_cast<AllreduceRequest*>(queue.pop());
-    for (uint64_t slot = 0; slot < num_slots; ++slot) {
-        auto start = slot * num_updates;
-        if (start >= m->getSize())
-            break;
-    }
-    // send packets
+void Allreducer::doOneAllreduce() {
     busy = true;
+    auto m = check_and_cast<AllreduceRequest*>(queue.pop());
+    auto grad_size = m->getSize();
+    auto num_pkts_expected = grad_size / num_updates;
+    if (grad_size % num_updates)
+        num_pkts_expected += 1;
+    for (uint64_t slot = 0; slot < num_slots; ++slot) {
+        auto offset = slot * num_updates;
+        if (offset >= grad_size)
+            break;
+
+        auto p = new SwitchMLPacket();
+        p->setFrom_id(getId());
+        p->setVer(0);
+        p->setSlot(slot);
+        p->setOffset(offset);
+        p->setUpward(true);
+        p->setLayer(m->getLayer());
+        p->setTensor_key(m->getTensor_key());
+        p->setN_workers(m->getNum_workers_allocated());
+        p->setJob_id(m->getJob_id());
+        p->setNum_pkts_expected(num_pkts_expected);
+        p->setGrad_size(grad_size);
+        send(p, serverOutGate);
+    }
     delete m;
 }
 
@@ -55,23 +52,25 @@ void Allreducer::handleMessage(cMessage *msg) {
         // enqueue
         queue.insert(msg);
         if (!busy) {
-            do_one_allreduce();
+            doOneAllreduce();
         }
         break;
-    case 1:
-        // allreduce done
+    case 1: {
+        // LayerAck
+        busy = false;
+        auto ack = check_and_cast<LayerAck*>(msg);
+        this->sendDelayed(ack, ack->getWeight_update_time(),
+                getParentModule()->gate("in"));
         if (!queue.isEmpty()) {
-            do_one_allreduce();
-        } else {
-            // wait for next allreduce arrival
-            busy = false;
+            doOneAllreduce();
         }
-        // notify someone else?
-        break;
-    default:
         break;
     }
-    delete msg;
+    default:
+        delete msg;
+        EV_FATAL << "got unexpected message" << endl;
+        break;
+    }
 }
 
 //void Allreducer::activity() {

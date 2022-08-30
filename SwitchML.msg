@@ -19,35 +19,49 @@ enum SwitchMLPacketType
 
 packet SwitchMLPacket
 {
-    int srcAddress;
-    int destAddress;
-    int serverProcId;
-};
+    int from_id;
+    uint32_t slot;
+    uint32_t ver;
+    uint32_t offset;
+    uint32_t tensor_key;
+    uint32_t n_workers;
+    uint64_t layer;
+    uint64_t job_id;
+    uint64_t num_pkts_expected;
+    uint64_t grad_size;
+    bool upward;
+}
 
 message LayerAck
 {
     uint64_t layer;
+    simtime_t weight_update_time;
 };
 
-message Setup
-{
-    int id;
-};
+//message Setup
+//{
+//    int id;
+//};
 
 message AllreduceRequest
 {
     uint64_t size;
     uint64_t rank;
+    uint64_t layer;
+    uint64_t tensor_key;
+    uint64_t job_id;
+    uint64_t num_workers_allocated;
 };
 
-message JobInfo
+message Job
 {
-    uint64_t id = 0;
+    simtime_t submit_time = 0;
+    simtime_t start_time = 0;
+    simtime_t finish_time = 0;
+    string model = "bert";
+    uint64_t job_id = 0;
     uint64_t gpu = 8;
     uint64_t rank = 0;
     uint32_t num_workers_allocated = 2;
     uint64_t iters = 2;
-    uint64_t fp_times[] = 1;
-    uint64_t bp_times[] = 1;
-    uint64_t grad_sizes[] = 100;
 };
