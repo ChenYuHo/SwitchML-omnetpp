@@ -3,18 +3,27 @@
 
 Define_Module(TrainingProcess);
 
-void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size) {
-    EV << "Start Allreduce" << endl;
+void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size, uint64_t iter) {
     auto req = new AllreduceRequest();
     req->setKind(0);
-    req->setRank(job->getRank());
+    req->setAllreducer_id(allreducer->getId());
+    req->setTraining_process_id(getId());
+    req->setWorker_id(worker->getId());
     req->setSize(size);
+    req->setRank(job->getRank());
     req->setLayer(layer);
-    req->setJob_id(job->getJob_id());
     req->setTensor_key(
-            hasher(fmt::format("jid{}tid{}", job->getJob_id(), layer)));
+            hasher(fmt::format("jid{}tid{}iter{}", job->getJob_id(), layer, iter)));
+    req->setJob_id(job->getJob_id());
     req->setNum_workers_allocated(n_workers);
-    sendDirect(req, allreducer, "in");
+
+    if (collective_scheduler) {
+        EV << "Enqueue Allreduce" << endl;
+        sendDirect(req, collective_scheduler, "in");
+    } else { // send directly to Allreducer
+        EV << "Start Allreduce" << endl;
+        sendDirect(req, allreducer, "in");
+    }
 }
 
 void TrainingProcess::forward_ack(LayerAck *ack) {
@@ -39,11 +48,9 @@ void TrainingProcess::waitAndProcessAck(simtime_t wait_time, cQueue *AckQueue) {
 void TrainingProcess::activity() {
     // retrieve parameters
     auto srvProcType = cModuleType::get("Allreducer");
-    allreducer = (Allreducer*) srvProcType->createScheduleInit(
-            fmt::format("allreducer{}", getId()).c_str(), getParentModule());
-    auto collective_scheduler = this->getSimulation()->findModuleByPath(
+    collective_scheduler = this->getSimulation()->findModuleByPath(
             "<root>.collective_scheduler");
-    auto worker = (Worker*) getParentModule();
+    worker = (Worker*) getParentModule();
     if (collective_scheduler) {
         EV << "Collective Scheduler is " << collective_scheduler->getFullName()
                   << endl;
@@ -57,6 +64,12 @@ void TrainingProcess::activity() {
     auto iters = job->getIters();
     auto num_layers = model.size();
     bool distributed = job->getNum_workers_allocated() > 1;
+    if (distributed) {
+        allreducer = (Allreducer*) srvProcType->createScheduleInit("allreducer",
+                this);
+        EV << "TrainingProcess id " << getId() << " created allreducer "
+                  << allreducer->getName() << endl;
+    }
     can_do_fp.resize(num_layers, true);
     EV << "Start Job " << jid << " as rank " << rank << endl;
     cQueue AckQueue(fmt::format("Allreducer{}", getId()).c_str());
@@ -70,19 +83,21 @@ void TrainingProcess::activity() {
             can_do_fp[i] = false;
         }
 
-        for (uint64_t i = num_layers; i > 0; --i) {
-            waitAndProcessAck(backward_pass_time[i - 1], &AckQueue);
+        for (int layer = num_layers - 1; layer >= 0; --layer) {
+            waitAndProcessAck(backward_pass_time[layer], &AckQueue);
             if (distributed) {
-                if (collective_scheduler) {
-//                    collective_scheduler->enqueue();
-                } else {
-                    allreduce(job, i, model[i]);
-                }
+                allreduce(job, layer, model[layer], iter);
             } else {
                 auto ack = new LayerAck();
-                ack->setLayer(i);
-                scheduleAfter(weight_update_time[i], ack);
+                ack->setLayer(layer);
+                scheduleAfter(weight_update_time[layer], ack);
             }
+        }
+    }
+
+    for (size_t i = 0; i < num_layers; ++i) {
+        while (!can_do_fp[i]) {
+            process_ack(check_and_cast<LayerAck*>(receive()));
         }
     }
 
@@ -95,7 +110,7 @@ void TrainingProcess::activity() {
               << endl;
     auto job_dispatcher = this->getSimulation()->getModuleByPath(
             "<root>.job_dispatcher");
-    this->sendDirect(job, job_dispatcher, "in");
+    this->sendDirect(job, job_dispatcher, "directin");
     allreducer->deleteModule();
     deleteModule();
 }

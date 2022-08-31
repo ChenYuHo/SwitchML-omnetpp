@@ -36,6 +36,7 @@ private:
     uint64_t num_slots;
     uint64_t num_updates;
     std::unordered_map<uint64_t, TrainingProcess*> training_process_for_job { };
+    cModule* collective_scheduler;
 
 protected:
     virtual void initialize() override;

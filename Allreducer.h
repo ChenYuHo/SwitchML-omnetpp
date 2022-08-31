@@ -19,6 +19,7 @@ private:
     cGate *serverOutGate;
     uint64_t num_slots;
     uint64_t num_updates;
+    cModule* collective_scheduler;
 };
 
 

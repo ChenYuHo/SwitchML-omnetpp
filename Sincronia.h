@@ -2,10 +2,12 @@
 #define SINCRONIA_H_
 
 #include "SwitchML_m.h"
+#include <unordered_map>
 using namespace omnetpp;
 
 class Sincronia: public cSimpleModule {
 private:
+    std::unordered_map<uint64_t, std::vector<AllreduceRequest*>> queue { };
 protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;

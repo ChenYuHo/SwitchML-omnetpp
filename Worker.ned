@@ -17,10 +17,10 @@ simple TrainingProcess
         input in;
 }
 
-simple AllReducer
+simple Allreducer
 {
     parameters:
-        int chunk_size; 
+        int chunk_size=0; 
     gates:
         input in;
 }

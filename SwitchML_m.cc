@@ -187,6 +187,8 @@ void SwitchMLPacket::copy(const SwitchMLPacket& other)
     this->job_id = other.job_id;
     this->num_pkts_expected = other.num_pkts_expected;
     this->grad_size = other.grad_size;
+    this->num_chunks = other.num_chunks;
+    this->chunk_id = other.chunk_id;
     this->upward = other.upward;
 }
 
@@ -203,6 +205,8 @@ void SwitchMLPacket::parsimPack(omnetpp::cCommBuffer *b) const
     doParsimPacking(b,this->job_id);
     doParsimPacking(b,this->num_pkts_expected);
     doParsimPacking(b,this->grad_size);
+    doParsimPacking(b,this->num_chunks);
+    doParsimPacking(b,this->chunk_id);
     doParsimPacking(b,this->upward);
 }
 
@@ -219,6 +223,8 @@ void SwitchMLPacket::parsimUnpack(omnetpp::cCommBuffer *b)
     doParsimUnpacking(b,this->job_id);
     doParsimUnpacking(b,this->num_pkts_expected);
     doParsimUnpacking(b,this->grad_size);
+    doParsimUnpacking(b,this->num_chunks);
+    doParsimUnpacking(b,this->chunk_id);
     doParsimUnpacking(b,this->upward);
 }
 
@@ -322,6 +328,26 @@ void SwitchMLPacket::setGrad_size(uint64_t grad_size)
     this->grad_size = grad_size;
 }
 
+uint64_t SwitchMLPacket::getNum_chunks() const
+{
+    return this->num_chunks;
+}
+
+void SwitchMLPacket::setNum_chunks(uint64_t num_chunks)
+{
+    this->num_chunks = num_chunks;
+}
+
+uint64_t SwitchMLPacket::getChunk_id() const
+{
+    return this->chunk_id;
+}
+
+void SwitchMLPacket::setChunk_id(uint64_t chunk_id)
+{
+    this->chunk_id = chunk_id;
+}
+
 bool SwitchMLPacket::getUpward() const
 {
     return this->upward;
@@ -347,6 +373,8 @@ class SwitchMLPacketDescriptor : public omnetpp::cClassDescriptor
         FIELD_job_id,
         FIELD_num_pkts_expected,
         FIELD_grad_size,
+        FIELD_num_chunks,
+        FIELD_chunk_id,
         FIELD_upward,
     };
   public:
@@ -414,7 +442,7 @@ const char *SwitchMLPacketDescriptor::getProperty(const char *propertyName) cons
 int SwitchMLPacketDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *base = getBaseClassDescriptor();
-    return base ? 11+base->getFieldCount() : 11;
+    return base ? 13+base->getFieldCount() : 13;
 }
 
 unsigned int SwitchMLPacketDescriptor::getFieldTypeFlags(int field) const
@@ -436,9 +464,11 @@ unsigned int SwitchMLPacketDescriptor::getFieldTypeFlags(int field) const
         FD_ISEDITABLE,    // FIELD_job_id
         FD_ISEDITABLE,    // FIELD_num_pkts_expected
         FD_ISEDITABLE,    // FIELD_grad_size
+        FD_ISEDITABLE,    // FIELD_num_chunks
+        FD_ISEDITABLE,    // FIELD_chunk_id
         FD_ISEDITABLE,    // FIELD_upward
     };
-    return (field >= 0 && field < 11) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 13) ? fieldTypeFlags[field] : 0;
 }
 
 const char *SwitchMLPacketDescriptor::getFieldName(int field) const
@@ -460,9 +490,11 @@ const char *SwitchMLPacketDescriptor::getFieldName(int field) const
         "job_id",
         "num_pkts_expected",
         "grad_size",
+        "num_chunks",
+        "chunk_id",
         "upward",
     };
-    return (field >= 0 && field < 11) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 13) ? fieldNames[field] : nullptr;
 }
 
 int SwitchMLPacketDescriptor::findField(const char *fieldName) const
@@ -479,7 +511,9 @@ int SwitchMLPacketDescriptor::findField(const char *fieldName) const
     if (strcmp(fieldName, "job_id") == 0) return baseIndex + 7;
     if (strcmp(fieldName, "num_pkts_expected") == 0) return baseIndex + 8;
     if (strcmp(fieldName, "grad_size") == 0) return baseIndex + 9;
-    if (strcmp(fieldName, "upward") == 0) return baseIndex + 10;
+    if (strcmp(fieldName, "num_chunks") == 0) return baseIndex + 10;
+    if (strcmp(fieldName, "chunk_id") == 0) return baseIndex + 11;
+    if (strcmp(fieldName, "upward") == 0) return baseIndex + 12;
     return base ? base->findField(fieldName) : -1;
 }
 
@@ -502,9 +536,11 @@ const char *SwitchMLPacketDescriptor::getFieldTypeString(int field) const
         "uint64_t",    // FIELD_job_id
         "uint64_t",    // FIELD_num_pkts_expected
         "uint64_t",    // FIELD_grad_size
+        "uint64_t",    // FIELD_num_chunks
+        "uint64_t",    // FIELD_chunk_id
         "bool",    // FIELD_upward
     };
-    return (field >= 0 && field < 11) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 13) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **SwitchMLPacketDescriptor::getFieldPropertyNames(int field) const
@@ -597,6 +633,8 @@ std::string SwitchMLPacketDescriptor::getFieldValueAsString(omnetpp::any_ptr obj
         case FIELD_job_id: return uint642string(pp->getJob_id());
         case FIELD_num_pkts_expected: return uint642string(pp->getNum_pkts_expected());
         case FIELD_grad_size: return uint642string(pp->getGrad_size());
+        case FIELD_num_chunks: return uint642string(pp->getNum_chunks());
+        case FIELD_chunk_id: return uint642string(pp->getChunk_id());
         case FIELD_upward: return bool2string(pp->getUpward());
         default: return "";
     }
@@ -624,6 +662,8 @@ void SwitchMLPacketDescriptor::setFieldValueAsString(omnetpp::any_ptr object, in
         case FIELD_job_id: pp->setJob_id(string2uint64(value)); break;
         case FIELD_num_pkts_expected: pp->setNum_pkts_expected(string2uint64(value)); break;
         case FIELD_grad_size: pp->setGrad_size(string2uint64(value)); break;
+        case FIELD_num_chunks: pp->setNum_chunks(string2uint64(value)); break;
+        case FIELD_chunk_id: pp->setChunk_id(string2uint64(value)); break;
         case FIELD_upward: pp->setUpward(string2bool(value)); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'SwitchMLPacket'", field);
     }
@@ -649,6 +689,8 @@ omnetpp::cValue SwitchMLPacketDescriptor::getFieldValue(omnetpp::any_ptr object,
         case FIELD_job_id: return (omnetpp::intval_t)(pp->getJob_id());
         case FIELD_num_pkts_expected: return (omnetpp::intval_t)(pp->getNum_pkts_expected());
         case FIELD_grad_size: return (omnetpp::intval_t)(pp->getGrad_size());
+        case FIELD_num_chunks: return (omnetpp::intval_t)(pp->getNum_chunks());
+        case FIELD_chunk_id: return (omnetpp::intval_t)(pp->getChunk_id());
         case FIELD_upward: return pp->getUpward();
         default: throw omnetpp::cRuntimeError("Cannot return field %d of class 'SwitchMLPacket' as cValue -- field index out of range?", field);
     }
@@ -676,6 +718,8 @@ void SwitchMLPacketDescriptor::setFieldValue(omnetpp::any_ptr object, int field,
         case FIELD_job_id: pp->setJob_id(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_num_pkts_expected: pp->setNum_pkts_expected(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_grad_size: pp->setGrad_size(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
+        case FIELD_num_chunks: pp->setNum_chunks(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
+        case FIELD_chunk_id: pp->setChunk_id(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_upward: pp->setUpward(value.boolValue()); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'SwitchMLPacket'", field);
     }
@@ -751,6 +795,7 @@ void LayerAck::copy(const LayerAck& other)
 {
     this->layer = other.layer;
     this->weight_update_time = other.weight_update_time;
+    this->completed = other.completed;
 }
 
 void LayerAck::parsimPack(omnetpp::cCommBuffer *b) const
@@ -758,6 +803,7 @@ void LayerAck::parsimPack(omnetpp::cCommBuffer *b) const
     ::omnetpp::cMessage::parsimPack(b);
     doParsimPacking(b,this->layer);
     doParsimPacking(b,this->weight_update_time);
+    doParsimPacking(b,this->completed);
 }
 
 void LayerAck::parsimUnpack(omnetpp::cCommBuffer *b)
@@ -765,6 +811,7 @@ void LayerAck::parsimUnpack(omnetpp::cCommBuffer *b)
     ::omnetpp::cMessage::parsimUnpack(b);
     doParsimUnpacking(b,this->layer);
     doParsimUnpacking(b,this->weight_update_time);
+    doParsimUnpacking(b,this->completed);
 }
 
 uint64_t LayerAck::getLayer() const
@@ -787,6 +834,16 @@ void LayerAck::setWeight_update_time(omnetpp::simtime_t weight_update_time)
     this->weight_update_time = weight_update_time;
 }
 
+bool LayerAck::getCompleted() const
+{
+    return this->completed;
+}
+
+void LayerAck::setCompleted(bool completed)
+{
+    this->completed = completed;
+}
+
 class LayerAckDescriptor : public omnetpp::cClassDescriptor
 {
   private:
@@ -794,6 +851,7 @@ class LayerAckDescriptor : public omnetpp::cClassDescriptor
     enum FieldConstants {
         FIELD_layer,
         FIELD_weight_update_time,
+        FIELD_completed,
     };
   public:
     LayerAckDescriptor();
@@ -860,7 +918,7 @@ const char *LayerAckDescriptor::getProperty(const char *propertyName) const
 int LayerAckDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *base = getBaseClassDescriptor();
-    return base ? 2+base->getFieldCount() : 2;
+    return base ? 3+base->getFieldCount() : 3;
 }
 
 unsigned int LayerAckDescriptor::getFieldTypeFlags(int field) const
@@ -874,8 +932,9 @@ unsigned int LayerAckDescriptor::getFieldTypeFlags(int field) const
     static unsigned int fieldTypeFlags[] = {
         FD_ISEDITABLE,    // FIELD_layer
         FD_ISEDITABLE,    // FIELD_weight_update_time
+        FD_ISEDITABLE,    // FIELD_completed
     };
-    return (field >= 0 && field < 2) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 3) ? fieldTypeFlags[field] : 0;
 }
 
 const char *LayerAckDescriptor::getFieldName(int field) const
@@ -889,8 +948,9 @@ const char *LayerAckDescriptor::getFieldName(int field) const
     static const char *fieldNames[] = {
         "layer",
         "weight_update_time",
+        "completed",
     };
-    return (field >= 0 && field < 2) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 3) ? fieldNames[field] : nullptr;
 }
 
 int LayerAckDescriptor::findField(const char *fieldName) const
@@ -899,6 +959,7 @@ int LayerAckDescriptor::findField(const char *fieldName) const
     int baseIndex = base ? base->getFieldCount() : 0;
     if (strcmp(fieldName, "layer") == 0) return baseIndex + 0;
     if (strcmp(fieldName, "weight_update_time") == 0) return baseIndex + 1;
+    if (strcmp(fieldName, "completed") == 0) return baseIndex + 2;
     return base ? base->findField(fieldName) : -1;
 }
 
@@ -913,8 +974,9 @@ const char *LayerAckDescriptor::getFieldTypeString(int field) const
     static const char *fieldTypeStrings[] = {
         "uint64_t",    // FIELD_layer
         "omnetpp::simtime_t",    // FIELD_weight_update_time
+        "bool",    // FIELD_completed
     };
-    return (field >= 0 && field < 2) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 3) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **LayerAckDescriptor::getFieldPropertyNames(int field) const
@@ -999,6 +1061,7 @@ std::string LayerAckDescriptor::getFieldValueAsString(omnetpp::any_ptr object, i
     switch (field) {
         case FIELD_layer: return uint642string(pp->getLayer());
         case FIELD_weight_update_time: return simtime2string(pp->getWeight_update_time());
+        case FIELD_completed: return bool2string(pp->getCompleted());
         default: return "";
     }
 }
@@ -1017,6 +1080,7 @@ void LayerAckDescriptor::setFieldValueAsString(omnetpp::any_ptr object, int fiel
     switch (field) {
         case FIELD_layer: pp->setLayer(string2uint64(value)); break;
         case FIELD_weight_update_time: pp->setWeight_update_time(string2simtime(value)); break;
+        case FIELD_completed: pp->setCompleted(string2bool(value)); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'LayerAck'", field);
     }
 }
@@ -1033,6 +1097,7 @@ omnetpp::cValue LayerAckDescriptor::getFieldValue(omnetpp::any_ptr object, int f
     switch (field) {
         case FIELD_layer: return (omnetpp::intval_t)(pp->getLayer());
         case FIELD_weight_update_time: return pp->getWeight_update_time().dbl();
+        case FIELD_completed: return pp->getCompleted();
         default: throw omnetpp::cRuntimeError("Cannot return field %d of class 'LayerAck' as cValue -- field index out of range?", field);
     }
 }
@@ -1051,6 +1116,7 @@ void LayerAckDescriptor::setFieldValue(omnetpp::any_ptr object, int field, int i
     switch (field) {
         case FIELD_layer: pp->setLayer(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_weight_update_time: pp->setWeight_update_time(value.doubleValue()); break;
+        case FIELD_completed: pp->setCompleted(value.boolValue()); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'LayerAck'", field);
     }
 }
@@ -1123,34 +1189,79 @@ AllreduceRequest& AllreduceRequest::operator=(const AllreduceRequest& other)
 
 void AllreduceRequest::copy(const AllreduceRequest& other)
 {
+    this->allreducer_id = other.allreducer_id;
+    this->training_process_id = other.training_process_id;
+    this->worker_id = other.worker_id;
     this->size = other.size;
     this->rank = other.rank;
     this->layer = other.layer;
     this->tensor_key = other.tensor_key;
     this->job_id = other.job_id;
     this->num_workers_allocated = other.num_workers_allocated;
+    this->num_chunks = other.num_chunks;
+    this->chunk_id = other.chunk_id;
 }
 
 void AllreduceRequest::parsimPack(omnetpp::cCommBuffer *b) const
 {
     ::omnetpp::cMessage::parsimPack(b);
+    doParsimPacking(b,this->allreducer_id);
+    doParsimPacking(b,this->training_process_id);
+    doParsimPacking(b,this->worker_id);
     doParsimPacking(b,this->size);
     doParsimPacking(b,this->rank);
     doParsimPacking(b,this->layer);
     doParsimPacking(b,this->tensor_key);
     doParsimPacking(b,this->job_id);
     doParsimPacking(b,this->num_workers_allocated);
+    doParsimPacking(b,this->num_chunks);
+    doParsimPacking(b,this->chunk_id);
 }
 
 void AllreduceRequest::parsimUnpack(omnetpp::cCommBuffer *b)
 {
     ::omnetpp::cMessage::parsimUnpack(b);
+    doParsimUnpacking(b,this->allreducer_id);
+    doParsimUnpacking(b,this->training_process_id);
+    doParsimUnpacking(b,this->worker_id);
     doParsimUnpacking(b,this->size);
     doParsimUnpacking(b,this->rank);
     doParsimUnpacking(b,this->layer);
     doParsimUnpacking(b,this->tensor_key);
     doParsimUnpacking(b,this->job_id);
     doParsimUnpacking(b,this->num_workers_allocated);
+    doParsimUnpacking(b,this->num_chunks);
+    doParsimUnpacking(b,this->chunk_id);
+}
+
+int AllreduceRequest::getAllreducer_id() const
+{
+    return this->allreducer_id;
+}
+
+void AllreduceRequest::setAllreducer_id(int allreducer_id)
+{
+    this->allreducer_id = allreducer_id;
+}
+
+int AllreduceRequest::getTraining_process_id() const
+{
+    return this->training_process_id;
+}
+
+void AllreduceRequest::setTraining_process_id(int training_process_id)
+{
+    this->training_process_id = training_process_id;
+}
+
+int AllreduceRequest::getWorker_id() const
+{
+    return this->worker_id;
+}
+
+void AllreduceRequest::setWorker_id(int worker_id)
+{
+    this->worker_id = worker_id;
 }
 
 uint64_t AllreduceRequest::getSize() const
@@ -1213,17 +1324,42 @@ void AllreduceRequest::setNum_workers_allocated(uint64_t num_workers_allocated)
     this->num_workers_allocated = num_workers_allocated;
 }
 
+uint64_t AllreduceRequest::getNum_chunks() const
+{
+    return this->num_chunks;
+}
+
+void AllreduceRequest::setNum_chunks(uint64_t num_chunks)
+{
+    this->num_chunks = num_chunks;
+}
+
+uint64_t AllreduceRequest::getChunk_id() const
+{
+    return this->chunk_id;
+}
+
+void AllreduceRequest::setChunk_id(uint64_t chunk_id)
+{
+    this->chunk_id = chunk_id;
+}
+
 class AllreduceRequestDescriptor : public omnetpp::cClassDescriptor
 {
   private:
     mutable const char **propertyNames;
     enum FieldConstants {
+        FIELD_allreducer_id,
+        FIELD_training_process_id,
+        FIELD_worker_id,
         FIELD_size,
         FIELD_rank,
         FIELD_layer,
         FIELD_tensor_key,
         FIELD_job_id,
         FIELD_num_workers_allocated,
+        FIELD_num_chunks,
+        FIELD_chunk_id,
     };
   public:
     AllreduceRequestDescriptor();
@@ -1290,7 +1426,7 @@ const char *AllreduceRequestDescriptor::getProperty(const char *propertyName) co
 int AllreduceRequestDescriptor::getFieldCount() const
 {
     omnetpp::cClassDescriptor *base = getBaseClassDescriptor();
-    return base ? 6+base->getFieldCount() : 6;
+    return base ? 11+base->getFieldCount() : 11;
 }
 
 unsigned int AllreduceRequestDescriptor::getFieldTypeFlags(int field) const
@@ -1302,14 +1438,19 @@ unsigned int AllreduceRequestDescriptor::getFieldTypeFlags(int field) const
         field -= base->getFieldCount();
     }
     static unsigned int fieldTypeFlags[] = {
+        FD_ISEDITABLE,    // FIELD_allreducer_id
+        FD_ISEDITABLE,    // FIELD_training_process_id
+        FD_ISEDITABLE,    // FIELD_worker_id
         FD_ISEDITABLE,    // FIELD_size
         FD_ISEDITABLE,    // FIELD_rank
         FD_ISEDITABLE,    // FIELD_layer
         FD_ISEDITABLE,    // FIELD_tensor_key
         FD_ISEDITABLE,    // FIELD_job_id
         FD_ISEDITABLE,    // FIELD_num_workers_allocated
+        FD_ISEDITABLE,    // FIELD_num_chunks
+        FD_ISEDITABLE,    // FIELD_chunk_id
     };
-    return (field >= 0 && field < 6) ? fieldTypeFlags[field] : 0;
+    return (field >= 0 && field < 11) ? fieldTypeFlags[field] : 0;
 }
 
 const char *AllreduceRequestDescriptor::getFieldName(int field) const
@@ -1321,26 +1462,36 @@ const char *AllreduceRequestDescriptor::getFieldName(int field) const
         field -= base->getFieldCount();
     }
     static const char *fieldNames[] = {
+        "allreducer_id",
+        "training_process_id",
+        "worker_id",
         "size",
         "rank",
         "layer",
         "tensor_key",
         "job_id",
         "num_workers_allocated",
+        "num_chunks",
+        "chunk_id",
     };
-    return (field >= 0 && field < 6) ? fieldNames[field] : nullptr;
+    return (field >= 0 && field < 11) ? fieldNames[field] : nullptr;
 }
 
 int AllreduceRequestDescriptor::findField(const char *fieldName) const
 {
     omnetpp::cClassDescriptor *base = getBaseClassDescriptor();
     int baseIndex = base ? base->getFieldCount() : 0;
-    if (strcmp(fieldName, "size") == 0) return baseIndex + 0;
-    if (strcmp(fieldName, "rank") == 0) return baseIndex + 1;
-    if (strcmp(fieldName, "layer") == 0) return baseIndex + 2;
-    if (strcmp(fieldName, "tensor_key") == 0) return baseIndex + 3;
-    if (strcmp(fieldName, "job_id") == 0) return baseIndex + 4;
-    if (strcmp(fieldName, "num_workers_allocated") == 0) return baseIndex + 5;
+    if (strcmp(fieldName, "allreducer_id") == 0) return baseIndex + 0;
+    if (strcmp(fieldName, "training_process_id") == 0) return baseIndex + 1;
+    if (strcmp(fieldName, "worker_id") == 0) return baseIndex + 2;
+    if (strcmp(fieldName, "size") == 0) return baseIndex + 3;
+    if (strcmp(fieldName, "rank") == 0) return baseIndex + 4;
+    if (strcmp(fieldName, "layer") == 0) return baseIndex + 5;
+    if (strcmp(fieldName, "tensor_key") == 0) return baseIndex + 6;
+    if (strcmp(fieldName, "job_id") == 0) return baseIndex + 7;
+    if (strcmp(fieldName, "num_workers_allocated") == 0) return baseIndex + 8;
+    if (strcmp(fieldName, "num_chunks") == 0) return baseIndex + 9;
+    if (strcmp(fieldName, "chunk_id") == 0) return baseIndex + 10;
     return base ? base->findField(fieldName) : -1;
 }
 
@@ -1353,14 +1504,19 @@ const char *AllreduceRequestDescriptor::getFieldTypeString(int field) const
         field -= base->getFieldCount();
     }
     static const char *fieldTypeStrings[] = {
+        "int",    // FIELD_allreducer_id
+        "int",    // FIELD_training_process_id
+        "int",    // FIELD_worker_id
         "uint64_t",    // FIELD_size
         "uint64_t",    // FIELD_rank
         "uint64_t",    // FIELD_layer
         "uint64_t",    // FIELD_tensor_key
         "uint64_t",    // FIELD_job_id
         "uint64_t",    // FIELD_num_workers_allocated
+        "uint64_t",    // FIELD_num_chunks
+        "uint64_t",    // FIELD_chunk_id
     };
-    return (field >= 0 && field < 6) ? fieldTypeStrings[field] : nullptr;
+    return (field >= 0 && field < 11) ? fieldTypeStrings[field] : nullptr;
 }
 
 const char **AllreduceRequestDescriptor::getFieldPropertyNames(int field) const
@@ -1443,12 +1599,17 @@ std::string AllreduceRequestDescriptor::getFieldValueAsString(omnetpp::any_ptr o
     }
     AllreduceRequest *pp = omnetpp::fromAnyPtr<AllreduceRequest>(object); (void)pp;
     switch (field) {
+        case FIELD_allreducer_id: return long2string(pp->getAllreducer_id());
+        case FIELD_training_process_id: return long2string(pp->getTraining_process_id());
+        case FIELD_worker_id: return long2string(pp->getWorker_id());
         case FIELD_size: return uint642string(pp->getSize());
         case FIELD_rank: return uint642string(pp->getRank());
         case FIELD_layer: return uint642string(pp->getLayer());
         case FIELD_tensor_key: return uint642string(pp->getTensor_key());
         case FIELD_job_id: return uint642string(pp->getJob_id());
         case FIELD_num_workers_allocated: return uint642string(pp->getNum_workers_allocated());
+        case FIELD_num_chunks: return uint642string(pp->getNum_chunks());
+        case FIELD_chunk_id: return uint642string(pp->getChunk_id());
         default: return "";
     }
 }
@@ -1465,12 +1626,17 @@ void AllreduceRequestDescriptor::setFieldValueAsString(omnetpp::any_ptr object, 
     }
     AllreduceRequest *pp = omnetpp::fromAnyPtr<AllreduceRequest>(object); (void)pp;
     switch (field) {
+        case FIELD_allreducer_id: pp->setAllreducer_id(string2long(value)); break;
+        case FIELD_training_process_id: pp->setTraining_process_id(string2long(value)); break;
+        case FIELD_worker_id: pp->setWorker_id(string2long(value)); break;
         case FIELD_size: pp->setSize(string2uint64(value)); break;
         case FIELD_rank: pp->setRank(string2uint64(value)); break;
         case FIELD_layer: pp->setLayer(string2uint64(value)); break;
         case FIELD_tensor_key: pp->setTensor_key(string2uint64(value)); break;
         case FIELD_job_id: pp->setJob_id(string2uint64(value)); break;
         case FIELD_num_workers_allocated: pp->setNum_workers_allocated(string2uint64(value)); break;
+        case FIELD_num_chunks: pp->setNum_chunks(string2uint64(value)); break;
+        case FIELD_chunk_id: pp->setChunk_id(string2uint64(value)); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'AllreduceRequest'", field);
     }
 }
@@ -1485,12 +1651,17 @@ omnetpp::cValue AllreduceRequestDescriptor::getFieldValue(omnetpp::any_ptr objec
     }
     AllreduceRequest *pp = omnetpp::fromAnyPtr<AllreduceRequest>(object); (void)pp;
     switch (field) {
+        case FIELD_allreducer_id: return pp->getAllreducer_id();
+        case FIELD_training_process_id: return pp->getTraining_process_id();
+        case FIELD_worker_id: return pp->getWorker_id();
         case FIELD_size: return (omnetpp::intval_t)(pp->getSize());
         case FIELD_rank: return (omnetpp::intval_t)(pp->getRank());
         case FIELD_layer: return (omnetpp::intval_t)(pp->getLayer());
         case FIELD_tensor_key: return (omnetpp::intval_t)(pp->getTensor_key());
         case FIELD_job_id: return (omnetpp::intval_t)(pp->getJob_id());
         case FIELD_num_workers_allocated: return (omnetpp::intval_t)(pp->getNum_workers_allocated());
+        case FIELD_num_chunks: return (omnetpp::intval_t)(pp->getNum_chunks());
+        case FIELD_chunk_id: return (omnetpp::intval_t)(pp->getChunk_id());
         default: throw omnetpp::cRuntimeError("Cannot return field %d of class 'AllreduceRequest' as cValue -- field index out of range?", field);
     }
 }
@@ -1507,12 +1678,17 @@ void AllreduceRequestDescriptor::setFieldValue(omnetpp::any_ptr object, int fiel
     }
     AllreduceRequest *pp = omnetpp::fromAnyPtr<AllreduceRequest>(object); (void)pp;
     switch (field) {
+        case FIELD_allreducer_id: pp->setAllreducer_id(omnetpp::checked_int_cast<int>(value.intValue())); break;
+        case FIELD_training_process_id: pp->setTraining_process_id(omnetpp::checked_int_cast<int>(value.intValue())); break;
+        case FIELD_worker_id: pp->setWorker_id(omnetpp::checked_int_cast<int>(value.intValue())); break;
         case FIELD_size: pp->setSize(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_rank: pp->setRank(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_layer: pp->setLayer(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_tensor_key: pp->setTensor_key(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_job_id: pp->setJob_id(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         case FIELD_num_workers_allocated: pp->setNum_workers_allocated(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
+        case FIELD_num_chunks: pp->setNum_chunks(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
+        case FIELD_chunk_id: pp->setChunk_id(omnetpp::checked_int_cast<uint64_t>(value.intValue())); break;
         default: throw omnetpp::cRuntimeError("Cannot set field %d of class 'AllreduceRequest'", field);
     }
 }

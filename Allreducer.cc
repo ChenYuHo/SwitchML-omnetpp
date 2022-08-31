@@ -10,14 +10,18 @@ Define_Module(Allreducer);
 
 void Allreducer::initialize() {
     queue = cQueue("queue"); //, f);
-    serverOutGate = getParentModule()->gate("port$o");
-    num_slots = getParentModule()->par("num_slots");
-    num_updates = getParentModule()->par("num_updates");
+    auto worker = getParentModule()->getParentModule();
+    serverOutGate = worker->gate("port$o");
+    num_slots = worker->par("num_slots");
+    num_updates = worker->par("num_updates");
+    collective_scheduler = getSimulation()->findModuleByPath(
+            "<root>.collective_scheduler");
 
 //    scheduleAt(simTime(), new cMessage);
 }
 
 void Allreducer::doOneAllreduce() {
+    EV_DEBUG << "Allreducer " << getId() << " doOneAllreduce" << endl;
     busy = true;
     auto m = check_and_cast<AllreduceRequest*>(queue.pop());
     auto grad_size = m->getSize();
@@ -26,21 +30,24 @@ void Allreducer::doOneAllreduce() {
         num_pkts_expected += 1;
     for (uint64_t slot = 0; slot < num_slots; ++slot) {
         auto offset = slot * num_updates;
+        EV_DEBUG << "Allreducer " << getId() << " grad_size " << grad_size << " slot " << slot << " offset " << offset << " num_updates " << num_updates << " num_slots " << num_slots << endl;
         if (offset >= grad_size)
             break;
-
         auto p = new SwitchMLPacket();
         p->setFrom_id(getId());
-        p->setVer(0);
         p->setSlot(slot);
+        p->setVer(0);
         p->setOffset(offset);
-        p->setUpward(true);
-        p->setLayer(m->getLayer());
         p->setTensor_key(m->getTensor_key());
         p->setN_workers(m->getNum_workers_allocated());
+        p->setLayer(m->getLayer());
         p->setJob_id(m->getJob_id());
         p->setNum_pkts_expected(num_pkts_expected);
         p->setGrad_size(grad_size);
+        p->setNum_chunks(m->getNum_chunks());
+        p->setChunk_id(m->getChunk_id());
+        p->setUpward(true);
+        EV_DEBUG << "Allreducer " << getId() << " send packet" << endl;
         send(p, serverOutGate);
     }
     delete m;
@@ -49,21 +56,31 @@ void Allreducer::doOneAllreduce() {
 void Allreducer::handleMessage(cMessage *msg) {
     switch (msg->getKind()) {
     case 0:
-        // enqueue
+        // AllreduceRequest from CollectiveScheduler or TrainingProcess
+        EV_DEBUG << "Allreducer " << getId() << " enqueue AllreduceRequest" << endl;
         queue.insert(msg);
         if (!busy) {
             doOneAllreduce();
         }
         break;
     case 1: {
-        // LayerAck
+        // LayerAck from Worker
         busy = false;
         auto ack = check_and_cast<LayerAck*>(msg);
-        this->sendDelayed(ack, ack->getWeight_update_time(),
-                getParentModule()->gate("in"));
+        if (ack->getCompleted()) {
+            // after weight update, notify TrainingProcess this allreduce completes
+            ack->setKind(2);
+            scheduleAfter(ack->getWeight_update_time(), ack);
+        } else
+            delete ack;
         if (!queue.isEmpty()) {
             doOneAllreduce();
         }
+        break;
+    }
+    case 2: {
+        // LayerAck from self, direct to TrainingProcess
+        sendDirect(msg, getParentModule(), "in");
         break;
     }
     default:

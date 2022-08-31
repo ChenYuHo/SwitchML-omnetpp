@@ -59,6 +59,8 @@ inline void doParsimUnpacking(omnetpp::cCommBuffer *b, SwitchMLPacketType& e) { 
  *     uint64_t job_id;
  *     uint64_t num_pkts_expected;
  *     uint64_t grad_size;
+ *     uint64_t num_chunks;
+ *     uint64_t chunk_id;
  *     bool upward;
  * }
  * </pre>
@@ -76,6 +78,8 @@ class SwitchMLPacket : public ::omnetpp::cPacket
     uint64_t job_id = 0;
     uint64_t num_pkts_expected = 0;
     uint64_t grad_size = 0;
+    uint64_t num_chunks = 0;
+    uint64_t chunk_id = 0;
     bool upward = false;
 
   private:
@@ -123,6 +127,12 @@ class SwitchMLPacket : public ::omnetpp::cPacket
     virtual uint64_t getGrad_size() const;
     virtual void setGrad_size(uint64_t grad_size);
 
+    virtual uint64_t getNum_chunks() const;
+    virtual void setNum_chunks(uint64_t num_chunks);
+
+    virtual uint64_t getChunk_id() const;
+    virtual void setChunk_id(uint64_t chunk_id);
+
     virtual bool getUpward() const;
     virtual void setUpward(bool upward);
 };
@@ -131,12 +141,13 @@ inline void doParsimPacking(omnetpp::cCommBuffer *b, const SwitchMLPacket& obj) 
 inline void doParsimUnpacking(omnetpp::cCommBuffer *b, SwitchMLPacket& obj) {obj.parsimUnpack(b);}
 
 /**
- * Class generated from <tt>SwitchML.msg:36</tt> by opp_msgtool.
+ * Class generated from <tt>SwitchML.msg:38</tt> by opp_msgtool.
  * <pre>
  * message LayerAck
  * {
  *     uint64_t layer;
  *     simtime_t weight_update_time;
+ *     bool completed;
  * }
  * 
  * //message Setup
@@ -150,6 +161,7 @@ class LayerAck : public ::omnetpp::cMessage
   protected:
     uint64_t layer = 0;
     omnetpp::simtime_t weight_update_time = SIMTIME_ZERO;
+    bool completed = false;
 
   private:
     void copy(const LayerAck& other);
@@ -171,34 +183,47 @@ class LayerAck : public ::omnetpp::cMessage
 
     virtual omnetpp::simtime_t getWeight_update_time() const;
     virtual void setWeight_update_time(omnetpp::simtime_t weight_update_time);
+
+    virtual bool getCompleted() const;
+    virtual void setCompleted(bool completed);
 };
 
 inline void doParsimPacking(omnetpp::cCommBuffer *b, const LayerAck& obj) {obj.parsimPack(b);}
 inline void doParsimUnpacking(omnetpp::cCommBuffer *b, LayerAck& obj) {obj.parsimUnpack(b);}
 
 /**
- * Class generated from <tt>SwitchML.msg:47</tt> by opp_msgtool.
+ * Class generated from <tt>SwitchML.msg:50</tt> by opp_msgtool.
  * <pre>
  * message AllreduceRequest
  * {
+ *     int allreducer_id;
+ *     int training_process_id;
+ *     int worker_id;
  *     uint64_t size;
  *     uint64_t rank;
  *     uint64_t layer;
  *     uint64_t tensor_key;
  *     uint64_t job_id;
  *     uint64_t num_workers_allocated;
+ *     uint64_t num_chunks = 1;
+ *     uint64_t chunk_id = 0;
  * }
  * </pre>
  */
 class AllreduceRequest : public ::omnetpp::cMessage
 {
   protected:
+    int allreducer_id = 0;
+    int training_process_id = 0;
+    int worker_id = 0;
     uint64_t size = 0;
     uint64_t rank = 0;
     uint64_t layer = 0;
     uint64_t tensor_key = 0;
     uint64_t job_id = 0;
     uint64_t num_workers_allocated = 0;
+    uint64_t num_chunks = 1;
+    uint64_t chunk_id = 0;
 
   private:
     void copy(const AllreduceRequest& other);
@@ -214,6 +239,15 @@ class AllreduceRequest : public ::omnetpp::cMessage
     virtual AllreduceRequest *dup() const override {return new AllreduceRequest(*this);}
     virtual void parsimPack(omnetpp::cCommBuffer *b) const override;
     virtual void parsimUnpack(omnetpp::cCommBuffer *b) override;
+
+    virtual int getAllreducer_id() const;
+    virtual void setAllreducer_id(int allreducer_id);
+
+    virtual int getTraining_process_id() const;
+    virtual void setTraining_process_id(int training_process_id);
+
+    virtual int getWorker_id() const;
+    virtual void setWorker_id(int worker_id);
 
     virtual uint64_t getSize() const;
     virtual void setSize(uint64_t size);
@@ -232,13 +266,19 @@ class AllreduceRequest : public ::omnetpp::cMessage
 
     virtual uint64_t getNum_workers_allocated() const;
     virtual void setNum_workers_allocated(uint64_t num_workers_allocated);
+
+    virtual uint64_t getNum_chunks() const;
+    virtual void setNum_chunks(uint64_t num_chunks);
+
+    virtual uint64_t getChunk_id() const;
+    virtual void setChunk_id(uint64_t chunk_id);
 };
 
 inline void doParsimPacking(omnetpp::cCommBuffer *b, const AllreduceRequest& obj) {obj.parsimPack(b);}
 inline void doParsimUnpacking(omnetpp::cCommBuffer *b, AllreduceRequest& obj) {obj.parsimUnpack(b);}
 
 /**
- * Class generated from <tt>SwitchML.msg:57</tt> by opp_msgtool.
+ * Class generated from <tt>SwitchML.msg:65</tt> by opp_msgtool.
  * <pre>
  * message Job
  * {

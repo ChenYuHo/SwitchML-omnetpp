@@ -76,26 +76,29 @@ std::unordered_map<Worker*, unsigned> JobDispatcher::random(Job *job) {
 
 void JobDispatcher::two_layers(uint64_t job_id,
         const std::unordered_map<Worker*, unsigned> &placement) {
-    std::unordered_map<int, uint64_t> num_updates { };
+    std::unordered_map<int, uint64_t> num_updates_for_tor { };
     for (auto &pair : placement) {
         auto worker = pair.first;
-        num_updates[worker->get_tor_id()] += 1;
+        num_updates_for_tor[worker->get_tor_id()] += 1;
     }
-    for (auto &pair: num_updates) {
-        auto switch_id = pair.first;
-        auto tor = (Switch*)this->getSimulation()->getModule(switch_id);
+    for (auto &pair: num_updates_for_tor) {
+        auto tor_id = pair.first;
+        auto tor = (Switch*)this->getSimulation()->getModule(tor_id);
         tor->set_num_updates_for_job(job_id, pair.second);
-        EV << fmt::format("jid {} set switch {} num_updates {}", job_id, switch_id, pair.second);
+        EV << fmt::format("jid {} set ToR {} num_updates {}\n", job_id, tor_id, pair.second);
     }
     auto core = (Switch*) getParentModule()->getSubmodule("core");
-    core->set_num_updates_for_job(job_id, num_updates.size());
-    EV << fmt::format("jid {} set core switch num_updates {}", job_id, num_updates.size());
+    core->set_num_updates_for_job(job_id, num_updates_for_tor.size());
+    EV << fmt::format("jid {} set core switch num_updates {}\n", job_id, num_updates_for_tor.size());
 
     core->set_top_level_for_job(job_id, true);
+    core->set_gate_ids_for_job(job_id, num_updates_for_tor);
     for (unsigned i = 0; i < switch_ports; ++i) {
         auto tor = (Switch*) getParentModule()->getSubmodule("tors", i);
         tor->set_top_level_for_job(job_id, false);
+        tor->set_gate_ids_for_job(job_id, placement);
     }
+
 }
 
 void JobDispatcher::handleMessage(cMessage *msg) {
