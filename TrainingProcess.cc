@@ -324,10 +324,10 @@ void TrainingProcess::setup(Job *job) {
                         SIMTIME_PS), SimTime(5321917838, SIMTIME_PS), SimTime(
                         593697295, SIMTIME_PS) };
     } else if (m == "test") {
-        model = vector<uint64_t> { 100 };
-        forward_pass_time = vector<simtime_t> { SimTime(1, SIMTIME_S) };
-        backward_pass_time = vector<simtime_t> { SimTime(1, SIMTIME_S) };
-        weight_update_time = vector<simtime_t> { SimTime(1, SIMTIME_S) };
+        model = vector<uint64_t> { uint64_t(worker->par("test_tensor_size")) };
+        forward_pass_time = vector<simtime_t> { 0 };
+        backward_pass_time = vector<simtime_t> { 0 };
+        weight_update_time = vector<simtime_t> { 0 };
     } else { // resnet50
         model = vector<uint64_t> { 405824, 6755584, 7417344, 7875584, 3102696 };
         forward_pass_time = vector<simtime_t> { SimTime(36421561000,

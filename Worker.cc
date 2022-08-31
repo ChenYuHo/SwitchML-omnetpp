@@ -12,8 +12,7 @@ void Worker::initialize() {
     out_gate = gate("port$o");
     num_slots = par("num_slots");
     num_updates = par("num_updates");
-    collective_scheduler = this->getSimulation()->findModuleByPath(
-            "<root>.collective_scheduler");
+    collective_scheduler = getSimulation()->findModuleByPath("<root>.collective_scheduler");
 }
 
 int Worker::get_tor_id() {

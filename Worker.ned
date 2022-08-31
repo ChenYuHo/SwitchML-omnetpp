@@ -4,7 +4,7 @@ simple Worker
         int num_slots;
         int num_updates;
         int num_gpus = default(4);
-        double processingTime @unit(s) @prompt("Time to process a query") = default(0.2s);
+        int test_tensor_size = default(26214400);
         @display("i=device/server");
     gates:
         inout port;

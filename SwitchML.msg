@@ -19,6 +19,7 @@ enum SwitchMLPacketType
 
 packet SwitchMLPacket
 {
+    byteLength = 9000;
     int from_id;
     uint32_t slot;
     uint32_t ver;

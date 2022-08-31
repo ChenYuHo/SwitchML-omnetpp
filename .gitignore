@@ -1,0 +1,16 @@
+.cmdenv-log
+.cproject
+.oppbuildspec
+.project
+.qtenvrc
+.settings/
+1.csv
+60_job.csv
+Makefile
+SwitchML
+SwitchML_dbg
+SwitchML_m.cc
+SwitchML_m.h
+out/
+realtime.ini
+realtime/

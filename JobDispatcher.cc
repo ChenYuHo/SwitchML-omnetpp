@@ -134,6 +134,7 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         dup->setRank(rank++);
         sendDirect(dup, worker, "jobin");
     }
+    delete job;
 
 //    auto a = sample(std::vector<unsigned> { 1, 2, 3, 4, 4 }, 3);
 }

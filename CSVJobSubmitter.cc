@@ -45,14 +45,16 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
             iters = 1;
 
         auto job_info = new Job;
-        job_info->setGpu(num_gpu*gpu_scale_factor);
+        job_info->setGpu(num_gpu * gpu_scale_factor);
         job_info->setIters(iters);
         job_info->setModel(model.c_str());
         job_info->setJob_id(jid++);
-        sendDelayed((cMessage *) job_info, submit_all_when_start ? 0 : submit_time-simTime(), "out");
+        sendDelayed((cMessage*) job_info,
+                submit_all_when_start ? 0 : submit_time - simTime(), "out");
         if ((--max_jobs) == 0) {
             break;
+        }
     }
-}
+    delete msg;
 }
 
