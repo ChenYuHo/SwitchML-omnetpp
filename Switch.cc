@@ -6,9 +6,13 @@
 Define_Module(Switch);
 
 void Switch::initialize() {
-//    id = getIndex();
-//    free_gpus = par("num_gpus");
-//    srvProcType = cModuleType::get("TrainingProcess");
+    EV << fmt::format("Switch {} has {} up_ports\n", getId(),
+                      gateSize("up_ports"));
+    for (unsigned i=0; i< gateSize("down_ports"); ++i) {
+        auto g = gate("down_ports$o", i);
+        auto id = g->getPathEndGate()->getOwnerModule()->getId();
+        gate_id[id] = g->getId();
+    }
 }
 
 void Switch::multicast_downward(SwitchMLPacket *pkt) {
@@ -20,30 +24,51 @@ void Switch::multicast_downward(SwitchMLPacket *pkt) {
     }
 }
 
-void Switch::set_gate_ids_for_job(uint64_t job_id,
-        const std::unordered_map<Worker*, unsigned> &placement) {
-    for (int i = 0; i < gateSize("port_down$o"); ++i) {
-        auto g = gate("port_down$o", i);
-        auto worker = (Worker*) g->getPathEndGate()->getOwnerModule();
-        if (placement.find(worker) != placement.end()) {
-            this->gate_ids_for_job[job_id].insert(g->getId());
-        }
-    }
-}
-
-void Switch::set_gate_ids_for_job(uint64_t job_id,
-        const std::unordered_map<int, uint64_t> &num_updates_for_tor) {
-    for (int i = 0; i < gateSize("port_down$o"); ++i) {
-        auto g = gate("port_down$o", i);
-        auto s = (Switch*) g->getPathEndGate()->getOwnerModule();
-        if (num_updates_for_tor.find(s->getId()) != num_updates_for_tor.end()) {
-            this->gate_ids_for_job[job_id].insert(g->getId());
-        }
-    }
-}
-
 void Switch::handleMessage(cMessage *msg) {
-    auto p = check_and_cast<SwitchMLPacket*>(msg);
+    if (!msg->isPacket()) {
+        switch (msg->getKind()) {
+        case 4: {
+            // HierarchyQuery
+            auto q = (HierarchyQuery*) msg;
+            q->appendPath(getId());
+            q->appendModules(this);
+            auto num_up_ports = gateSize("up_ports");
+            if (num_up_ports) {
+                for (unsigned i = 0; i < num_up_ports; ++i) {
+                    sendDirect(q->dup(),
+                            gate("up_ports$o", i)->getPathEndGate()->getOwnerModule(),
+                            "directin");
+                }
+                delete q;
+            } else {
+                // no up ports, send back to JobDispatcher
+                this->sendDirect(q,
+                        this->getSimulation()->getModule(q->getFrom_id()),
+                        "directin");
+            }
+            break;
+        }
+        case 6: {
+            // setup messages
+            auto setup = (Setup*) msg;
+            auto job_id = setup->getJob_id();
+            auto num_updates = setup->getIdsArraySize();
+            num_updates_for_job[job_id] = num_updates;
+            top_level_for_job[job_id] = setup->getTop_level();
+            for (size_t i = 0; i < num_updates; ++i) {
+                gate_ids_for_job[job_id].insert(gate_id[setup->getIds(i)]);
+            }
+            delete msg;
+
+            break;
+        }
+        default:
+            delete msg;
+            EV_FATAL << "wrong message\n";
+        }
+        return;
+    }
+    auto p = (SwitchMLPacket*) msg;
     auto key = fmt::format("s{}v{}", p->getSlot(), p->getVer());
     auto key_of_the_other_slot = fmt::format("s{}v{}", p->getSlot(),
             1 - p->getVer());
@@ -54,21 +79,8 @@ void Switch::handleMessage(cMessage *msg) {
         auto &count = count_for_tensor_key[p->getTensor_key()];
         auto &seen_key = seen[key];
         if (seen_key.find(p->getFrom_id()) != seen_key.end()) { // shadow buffer
-            EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
-//            if (count[key] == p->n_workers) {
-//                auto dest = p->id;
-//                assert(down_routes.contains(dest));
-//                Route *route = down_routes[dest];
-//                auto unicast_pkt = copy_pkt(p, route, false);
-//                myprintf(11, "[%lu] Switch layer %d id %d reply shadow buffer packet downward to wid/sid %d %s\n",
-//                         eventlist().now(), layer, id, dest, unicast_pkt->to_str().c_str());
-//                unicast_pkt->sendOnSimple();
-//            } else if (top_level_for_job[p->job_id] && count[key] == 0) {
-//                auto unicast_pkt = copy_pkt(p, up_route, true);
-//                myprintf(11, "[%lu] Switch layer %d id %d forward shadow buffer request packet upward %s\n",
-//                         eventlist().now(), layer, id, unicast_pkt->to_str().c_str());
-//                unicast_pkt->sendOnSimple();
-//            } // else drop (free) packet
+            EV_FATAL << "Switch " << getId()
+                            << " received shadow buffer request" << endl;
         } else {
             EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
             seen_key.insert(p->getFrom_id());
@@ -88,7 +100,7 @@ void Switch::handleMessage(cMessage *msg) {
                     // send to upper level
                     auto pkt = p->dup();
                     pkt->setFrom_id(getId());
-                    this->send(pkt, gate("port_up$o", 0));
+                    this->send(pkt, gate("up_ports$o", 0));
                 }
             } // else drop (free) packet
         }

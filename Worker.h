@@ -16,27 +16,22 @@
 using namespace omnetpp;
 
 class Worker: public cSimpleModule {
-public:
-    unsigned get_free_gpus() {
-        return free_gpus;
-    }
-    int get_tor_id();
-    void adjust_free_gpus(unsigned offset, bool increment) {
-        free_gpus = increment ? free_gpus + offset : free_gpus - offset;
-    }
 private:
     cModuleType *srvProcType;
     unsigned free_gpus { 0 };
     Switch *tor { nullptr };
-    unsigned id;
-    void start_job(Job*);
     std::unordered_map<uint32_t, std::unordered_set<uint32_t>> received_pkts { };
     cGate *out_gate;
     void sendNextPacket(SwitchMLPacket*, uint32_t);
     uint64_t num_slots;
     uint64_t num_updates;
     std::unordered_map<uint64_t, TrainingProcess*> training_process_for_job { };
-    cModule* collective_scheduler;
+    cModule *collective_scheduler;
+    cModule *job_dispatcher;
+    unsigned num_jobs_given { 0 };
+    std::unordered_map<uint64_t, cQueue> collective_operation_requests_for_job {};
+    std::unordered_map<uint64_t, bool> doing_collective_operation {};
+    void startOneCollectiveOperation(uint64_t);
 
 protected:
     virtual void initialize() override;

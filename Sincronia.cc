@@ -22,14 +22,14 @@ void Sincronia::handleMessage(cMessage *msg) {
     switch (msg->getKind()) {
     case 0: {
         // AllreduceRequest from TrainingProcess
-        auto request = check_and_cast<AllreduceRequest*>(msg);
+        auto request = check_and_cast<CollectiveOperationRequest*>(msg);
         auto &requests = queue[request->getTensor_key()];
         requests.push_back(request);
         if (requests.size() == request->getNum_workers_allocated()) {
             for (auto req : requests) {
                 auto reducer = this->getSimulation()->getModule(
                         req->getAllreducer_id());
-                this->sendDirect(req, reducer, "in");
+                this->sendDirect(req, reducer, "directin");
             }
             queue.erase(request->getTensor_key());
         }

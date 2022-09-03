@@ -3,12 +3,11 @@ import ned.DatarateChannel;
 simple Switch
 {
     parameters:
-        double pkRate = 1;
-        int queueMaxLen = 1;
         @display("i=block/switch;q=queue");
     gates:
-        inout port_up[];
-        inout port_down[];
+        inout up_ports[];
+        inout down_ports[];
+        input directin;
 }
 
 channel Channel extends DatarateChannel

@@ -1,4 +1,5 @@
 #include "SwitchML_m.h"
+#include "ModelStats.h"
 #define CSV_IO_NO_THREAD
 #include "csv.h"
 using namespace omnetpp;
@@ -13,48 +14,73 @@ protected:
 Define_Module(CSVJobSubmitter);
 
 void CSVJobSubmitter::initialize() {
-    scheduleAt(simTime(), new cMessage);
+//    scheduleAt(simTime(), new cMessage);
+    scheduleAfter(SimTime(1, SIMTIME_PS), new cMessage); // wait for initial setup messages to finish
 }
 
 void CSVJobSubmitter::handleMessage(cMessage *msg) {
-    if (!msg->isSelfMessage()) {
-        EV_WARN << "Shouldn't receive messages from outside, ignored" << endl;
-        delete msg;
-        return;
-    }
+    delete msg;
 
     // start reading csv
     io::CSVReader<5/*column count*/> csvin(par("file").stringValue());
-    csvin.read_header(io::ignore_missing_column, "num_gpu", "duration",
-            "submit_time", "iterations", "model");
+    csvin.read_header(io::ignore_missing_column, "num_gpu", "duration", "submit_time", "iterations", "model");
     unsigned num_gpu;
     unsigned duration;
     unsigned submit_time; // originally in seconds
     unsigned iterations = 0;
-    std::string model = "resnet50";
-//    unsigned counter = 0;
+    std::string m = "resnet50";
     unsigned max_jobs = par("max_jobs_to_submit");
     unsigned shrink_iter_factor = par("shrink_iter_factor");
     unsigned gpu_scale_factor = par("gpu_scale_factor");
-    unsigned jid = 1;
     bool submit_all_when_start = par("submit_all_when_start");
-
-    while (csvin.read_row(num_gpu, duration, submit_time, iterations, model)) {
+    auto jobs = std::vector<Job*> { };
+    while (csvin.read_row(num_gpu, duration, submit_time, iterations, m)) {
         auto iters = iterations / shrink_iter_factor;
         if (iters == 0)
             iters = 1;
-
         auto job_info = new Job;
         job_info->setGpu(num_gpu * gpu_scale_factor);
         job_info->setIters(iters);
-        job_info->setModel(model.c_str());
-        job_info->setJob_id(jid++);
-        sendDelayed((cMessage*) job_info,
-                submit_all_when_start ? 0 : submit_time - simTime(), "out");
+        job_info->setSubmit_time(SimTime(submit_time, SIMTIME_S));
+        if (m == "alexnet") {
+            job_info->setModel(alexnet);
+        } else if (m == "vgg11") {
+            job_info->setModel(vgg11);
+        } else if (m == "vgg16") {
+            job_info->setModel(vgg16);
+        } else if (m == "vgg19") {
+            job_info->setModel(vgg19);
+        } else if (m == "inception" || m == "inception3" || m == "inception4") { // trace is inceptionv3
+            job_info->setModel(inception);
+        } else if (m == "googlenet") {
+            job_info->setModel(googlenet);
+        } else if (m == "resnet101") {
+            job_info->setModel(resnet101);
+        } else if (m == "resnet152") {
+            job_info->setModel(resnet152);
+        } else if (m == "bert") {
+            job_info->setModel(bert);
+        } else if (m == "test") {
+            job_info->setModel(test);
+        } else { // resnet50
+            job_info->setModel(resnet50);
+        }
+        jobs.push_back(job_info);
         if ((--max_jobs) == 0) {
             break;
         }
     }
-    delete msg;
+
+    std::sort(jobs.begin(), jobs.end(), [](Job *a, Job *b){
+        return a->getSubmit_time() == b->getSubmit_time() ? a->getJob_id() < b->getJob_id() : a->getSubmit_time() < b->getSubmit_time();
+    });
+
+    // re-id jobs, smaller jid has earlier submission time
+    uint64_t jid = 1;
+    for (auto job_info : jobs) {
+        job_info->setJob_id(jid++);
+        sendDelayed(job_info,
+                submit_all_when_start ? 0 : job_info->getSubmit_time(), "out");
+    }
 }
 

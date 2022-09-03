@@ -7,7 +7,7 @@ using namespace omnetpp;
 
 class Sincronia: public cSimpleModule {
 private:
-    std::unordered_map<uint64_t, std::vector<AllreduceRequest*>> queue { };
+    std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> queue { };
 protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;

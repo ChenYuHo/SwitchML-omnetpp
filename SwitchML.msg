@@ -8,7 +8,8 @@
 //
 
 
-enum SwitchMLPacketType
+enum SwitchMLPacketType//        model = vector<uint64_t> { 405824, 6755584, 7417344, 7875584, 3102696 };
+
 {
     SWITCHML_CONN_REQ = 0;
     SWITCHML_CONN_ACK = 1;
@@ -16,6 +17,20 @@ enum SwitchMLPacketType
     SWITCHML_DISC_ACK = 3;
     SWITCHML_DATA = 4;
 };
+
+//enum Model
+//{
+//    alexnet = 0;
+//    vgg11 = 1;
+//    vgg16 = 2;
+//    vgg19 = 3;
+//    inception = 4;
+//    googlenet = 5;
+//    resnet50 = 6;
+//    resnet101 = 7;
+//    resnet152 = 8;
+//    bert = 9;
+//}
 
 packet SwitchMLPacket
 {
@@ -32,6 +47,7 @@ packet SwitchMLPacket
     uint64_t grad_size;
     uint64_t num_chunks;
     uint64_t chunk_id;
+    short model;
     bool upward;
 }
 
@@ -39,15 +55,26 @@ message LayerAck
 {
     uint64_t layer;
     simtime_t weight_update_time;
+    uint64_t job_id;
     bool completed;
 };
 
-//message Setup
-//{
-//    int id;
-//};
+message HierarchyQuery
+{
+    int path[];
+    int from_id;
+    int num_gpus;
+    cModule* modules[];
+}
 
-message AllreduceRequest
+message Setup
+{
+   uint64_t job_id;
+   int ids[];
+   bool top_level;
+};
+
+message CollectiveOperationRequest
 {
     int allreducer_id;
     int training_process_id;
@@ -67,8 +94,9 @@ message Job
     simtime_t submit_time = 0;
     simtime_t start_time = 0;
     simtime_t finish_time = 0;
-    string model = "bert";
+    short model = 0;
     uint64_t job_id = 0;
+    int worker_id = 0;
     uint64_t gpu = 8;
     uint64_t rank = 0;
     uint32_t num_workers_allocated = 2;

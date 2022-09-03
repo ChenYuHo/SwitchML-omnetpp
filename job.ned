@@ -25,8 +25,12 @@ simple JobDispatcher
 {
     parameters:
         @signal[jobCompletionTime](type=simtime_t);
-        string scheduler = default("fifo");
-        string placer = default("random");
+        @signal[jobSubmissionTime](type=simtime_t);
+        @signal[jobWaitTime](type=simtime_t);
+        @signal[jobStartTime](type=simtime_t);
+        string hierarchy = default("two_layers");
+        string job_scheduling = default("fifo");
+        string job_placement = default("random_multirack");
     gates:
         input in;
         input directin;

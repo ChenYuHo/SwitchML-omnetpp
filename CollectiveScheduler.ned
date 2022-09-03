@@ -1,11 +1,11 @@
 moduleinterface ICollectiveScheduler
 {
     gates:
-        input in;
+        input directin;
 }
 
 simple Sincronia like ICollectiveScheduler
 {
     gates:
-        input in;
+        input directin;
 }

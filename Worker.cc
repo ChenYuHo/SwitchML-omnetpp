@@ -1,32 +1,19 @@
 #include "Worker.h"
 #include "SwitchML_m.h"
+#include "ModelStats.h"
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
 using namespace omnetpp;
 Define_Module(Worker);
 
 void Worker::initialize() {
-    id = getIndex();
     free_gpus = par("num_gpus");
     srvProcType = cModuleType::get("TrainingProcess");
     out_gate = gate("port$o");
     num_slots = par("num_slots");
     num_updates = par("num_updates");
-    collective_scheduler = getSimulation()->findModuleByPath("<root>.collective_scheduler");
-}
-
-int Worker::get_tor_id() {
-    if (!tor)
-        tor = (Switch*) gate("port$o")->getPathEndGate()->getOwnerModule();
-
-    return tor->getId();
-}
-
-void Worker::start_job(Job *job) {
-//    cModule *mod = srvProcType->createScheduleInit(fmt::format("{}test", ), this);
-//            EV << "Start Server Process" << endl;
-//            sendDirect(msg, mod, "in");
-
+    collective_scheduler = getSimulation()->findModuleByPath(
+            "<root>.collective_scheduler");
 }
 
 void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
@@ -39,54 +26,125 @@ void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
     // caller should delete pkt
 }
 
-void Worker::handleMessage(cMessage *msg) {
-    if (msg->isSelfMessage() || !msg->isPacket()) {
-        EV_DEBUG << "Worker " << getId() << " " << __LINE__ << endl;
-        // mod will self destroy
-        cModule *mod = srvProcType->createScheduleInit(
-                fmt::format("{}i", msg->getId()).c_str(), this);
-        sendDirect(msg, mod, "in");
-        auto job = check_and_cast<Job*>(msg);
-        training_process_for_job[job->getJob_id()] = (TrainingProcess*) mod;
-        EV << "Worker "<< getId() << " Start Server Process for Job " << job->getJob_id() << endl;
-    } else {
-        EV_DEBUG << "Worker " << getId() << " " << __LINE__ << endl;
-        // SwitchMLPacket
-        auto p = check_and_cast<SwitchMLPacket*>(msg);
-//        myprintf(8, "[%lu] mid %d got aggregated pkt %s\n", eventlist().now(),
-//                id, p->to_str().c_str());
+void Worker::startOneCollectiveOperation(uint64_t job_id) {
+    EV_DEBUG << "Worker " << getId() << " startOneCollectiveOperation" << endl;
+    auto m =
+            (CollectiveOperationRequest*) (collective_operation_requests_for_job[job_id].pop());
+    doing_collective_operation[job_id] = true;
+    auto grad_size = m->getSize();
+    auto num_pkts_expected = grad_size / num_updates;
+    if (grad_size % num_updates)
+        num_pkts_expected += 1;
+    for (uint64_t slot = 0; slot < num_slots; ++slot) {
+        auto offset = slot * num_updates;
+        if (offset >= grad_size)
+            break;
+        auto p = new SwitchMLPacket();
+        p->setFrom_id(getId());
+        p->setSlot(slot);
+        p->setVer(0);
+        p->setOffset(offset);
+        p->setTensor_key(m->getTensor_key());
+        p->setN_workers(m->getNum_workers_allocated());
+        p->setLayer(m->getLayer());
+        p->setJob_id(m->getJob_id());
+        p->setNum_pkts_expected(num_pkts_expected);
+        p->setGrad_size(grad_size);
+        p->setNum_chunks(m->getNum_chunks());
+        p->setChunk_id(m->getChunk_id());
+        p->setUpward(true);
+        send(p, out_gate);
+    }
+    delete m;
+}
 
+void Worker::handleMessage(cMessage *msg) {
+    if (!msg->isPacket()) {
+        switch (msg->getKind()) {
+        case 0: {
+            // CollectiveOperationRequest from CollectiveOperationScheduler or TrainingProcess
+            auto req = (CollectiveOperationRequest*) msg;
+            collective_operation_requests_for_job[req->getJob_id()].insert(req);
+            if (!doing_collective_operation[req->getJob_id()]) {
+                startOneCollectiveOperation(req->getJob_id());
+            }
+            break;
+        }
+        case 2: {
+            // LayerAck from self, direct to TrainingProcess
+            auto ack = (LayerAck*) msg;
+            sendDirect(ack, training_process_for_job[ack->getJob_id()], "directin");
+            break;
+        }
+        case 3: { // new Job
+            // mod will self destroy
+            cModule *mod = srvProcType->createScheduleInit(
+                    fmt::format("Worker{}_Job{}", msg->getId(),
+                            ++num_jobs_given).c_str(), this);
+            sendDirect(msg, mod, "directin");
+            auto job = check_and_cast<Job*>(msg);
+            free_gpus += job->getGpu();
+            training_process_for_job[job->getJob_id()] = (TrainingProcess*) mod;
+            EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
+                            << job->getJob_id() << endl;
+            break;
+        }
+        case 4: { // HierarchyQuery
+            auto q = (HierarchyQuery*) msg;
+            q->appendPath(getId());
+            q->appendModules(this);
+            q->setNum_gpus(free_gpus);
+            job_dispatcher = getSimulation()->getModule(q->getFrom_id());
+            sendDirect(q, out_gate->getPathEndGate()->getOwnerModule(), "directin");
+            break;
+        }
+        case 5: { // finished job from TrainingProcess
+            auto job  = (Job*) msg;
+            job->setWorker_id(getId());
+            sendDirect(job, job_dispatcher, "directin");
+            break;
+        }
+        default:
+            delete msg;
+            EV_FATAL << "got unexpected message" << endl;
+            break;
+        }
+
+    } else {
+        auto p = (SwitchMLPacket*) (msg);
         auto &set = received_pkts[p->getTensor_key()];
         if (set.find(p->getOffset()) != set.end()) {
-            EV_DEBUG << "Worker " << getId() << " " << __LINE__ << endl;
             // duplicate
-//            myprintf(8, "already received %d/%d pkt, discarding\n",
-//                    p->offset / NUM_UPDATES, p->tensor->num_pkts_expected);
+            EV_DEBUG << "Worker " << getId() << " got duplicate packet.\n";
         } else {
-            EV_DEBUG << "Worker " << getId() << " " << __LINE__ << endl;
             set.insert(p->getOffset());
-            // cancel timer
+            // cancel timer if retransmission is enabled
             if (set.size() == p->getNum_pkts_expected()) {
-                EV_DEBUG << "Worker " << getId() << " " << __LINE__ << endl;
                 // allreduce done, notify allreducer
                 EV_DEBUG << fmt::format("Worker {} done allreduce\n", getId());
-                auto training_process =
-                        this->training_process_for_job[p->getJob_id()];
-                auto allreducer = training_process->getSubmodule("allreducer");
+//                auto training_process = training_process_for_job[p->getJob_id()];
+                auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
                 auto ack = new LayerAck();
-                ack->setKind(1);
                 ack->setLayer(p->getLayer());
-                ack->setWeight_update_time(
-                        training_process->get_weight_update_time(
-                                p->getLayer()));
-                ack->setCompleted(p->getChunk_id()+1 == p->getNum_chunks());
+                ack->setJob_id(p->getJob_id());
+                auto w = wu_time(alexnet, p->getLayer());
+                ack->setWeight_update_time(w);
+                ack->setCompleted(completed);
                 if (collective_scheduler) {
-                    EV_DEBUG << "Worker " << getId() << " " << __LINE__ << endl;
                     auto dup = ack->dup();
-                    dup->setKind(2);
-                    sendDirect(dup, collective_scheduler, "in");
+                    dup->setKind(1);
+                    sendDirect(dup, collective_scheduler, "directin");
                 }
-                sendDirect(ack, allreducer, "in");
+
+                doing_collective_operation[p->getJob_id()] = false;
+                if (completed) {
+                    // after weight update, notify TrainingProcess this allreduce completes
+                    ack->setKind(2);
+                    scheduleAfter(w, ack);
+                }
+                if (!collective_operation_requests_for_job[p->getJob_id()].isEmpty()) {
+                    startOneCollectiveOperation(p->getJob_id());
+                }
 
                 // can't clear yet if loss recovery is enabled
                 set.clear();

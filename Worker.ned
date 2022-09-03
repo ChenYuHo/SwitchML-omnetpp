@@ -9,18 +9,19 @@ simple Worker
     gates:
         inout port;
         input jobin;
+        input directin;
 }
 
 simple TrainingProcess
 {
     gates:
-        input in;
+        input directin;
 }
 
-simple Allreducer
-{
-    parameters:
-        int chunk_size=0; 
-    gates:
-        input in;
-}
+//simple Allreducer
+//{
+//    parameters:
+//        int chunk_size=0; 
+//    gates:
+//        input in;
+//}

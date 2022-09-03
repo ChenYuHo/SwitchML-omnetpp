@@ -2,139 +2,131 @@
 #include "JobDispatcher.h"
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
+#include "hierarchy.h"
+#include "job_scheduling.h"
+#include "job_placement.h"
 
 using namespace omnetpp;
 
 Define_Module(JobDispatcher);
 
 void JobDispatcher::initialize() {
-    pick_a_job_to_execute = &JobDispatcher::fifo;
-    get_placement = &JobDispatcher::random;
-    setup_switches = &JobDispatcher::two_layers;
     switch_ports = getParentModule()->par("switch_ports");
     n_workers = getParentModule()->par("n_workers");
-    workers.reserve(n_workers);
     for (unsigned i = 0; i < n_workers; ++i) {
-        auto worker = (Worker*) getParentModule()->getSubmodule("workers", i);
-        workers.push_back(worker);
+        auto msg = new HierarchyQuery("query", 4);
+        msg->setFrom_id(getId());
+        sendDirect(msg, getParentModule()->getSubmodule("workers", i), "directin");
     }
+
+    std::string h = par("hierarchy");
+    if (h == "two_layers") {
+        hierarchy = new TwoLayers(this);
+    }
+
+    std::string js = par("job_scheduling");
+    if (js == "fifo") {
+        job_scheduling = new Fifo();
+    }
+
+    std::string p = par("job_placement");
+    if (p == "random") {
+        job_placement = new Random(getRNG(0), this);
+    } else if (p == "random_distributed") {
+        job_placement = new Random(getRNG(0), this, true);
+    } else if (p == "random_multirack") {
+        job_placement = new Random(getRNG(0), this, true, true);
+    }
+
+    jsmtSignal = registerSignal("jobSubmissionTime");
+    jctSignal = registerSignal("jobCompletionTime");
+    jstSignal = registerSignal("jobStartTime");
+    jwtSignal = registerSignal("jobWaitTime");
 }
 
-Job* JobDispatcher::fifo() {
-    if (jobs.empty())
-        return nullptr;
-    return jobs.begin()->second; // already sorted
-}
-
-bool multi_racks_placement(const std::vector<Worker*> &selected) {
-    std::unordered_set<unsigned> placed_tors;
-    for (const auto &worker : selected) {
-        placed_tors.insert(worker->get_tor_id());
-    }
-    return placed_tors.size() > 1;
-}
-
-bool distributed_placement(const std::vector<Worker*> &selected) {
-    std::unordered_set<unsigned> workers { };
-    for (const auto &worker : selected) {
-        workers.insert(worker->getId());
-    }
-    return workers.size() > 1;
-}
-
-std::unordered_map<Worker*, unsigned> JobDispatcher::random(Job *job) {
-    std::vector<Worker*> candidates;
-    std::unordered_map<Worker*, unsigned> counter { };
-    unsigned available_machines = 0;
-    std::unordered_set<unsigned> tors_with_available_machines;
-    for (auto worker : workers) {
-        if (worker->get_free_gpus() > 0) {
-            available_machines++;
-            tors_with_available_machines.insert(worker->get_tor_id());
-        }
-        for (int i = 0; i < worker->get_free_gpus(); ++i)
-            candidates.push_back(worker);
+bool JobDispatcher::tryDispatchAJob() {
+    auto job = job_scheduling->pick_a_job_to_execute(jobs);
+    if (!job) {
+        return false;
     }
 
-    if (job->getGpu() > candidates.size())
-        return counter; // not enough free GPUs
-    std::vector<Worker*> selected;
-    auto must_place_distributed = force_distributed && available_machines > 1
-            && job->getGpu() > 1;
-    auto must_place_multi_racks = force_multi_racks
-            && tors_with_available_machines.size() > 1 && job->getGpu() > 1;
-    do {
-        do {
-            selected = sample(candidates, job->getGpu());
-        } while (must_place_distributed && !distributed_placement(selected));
-    } while (must_place_multi_racks && !multi_racks_placement(selected));
-    for (auto worker : selected) {
-        counter[worker] += 1;
-    }
-    return counter;
-}
+    auto placement = job_placement->place_job(job);
 
-void JobDispatcher::two_layers(uint64_t job_id,
-        const std::unordered_map<Worker*, unsigned> &placement) {
-    std::unordered_map<int, uint64_t> num_updates_for_tor { };
-    for (auto &pair : placement) {
-        auto worker = pair.first;
-        num_updates_for_tor[worker->get_tor_id()] += 1;
-    }
-    for (auto &pair: num_updates_for_tor) {
-        auto tor_id = pair.first;
-        auto tor = (Switch*)this->getSimulation()->getModule(tor_id);
-        tor->set_num_updates_for_job(job_id, pair.second);
-        EV << fmt::format("jid {} set ToR {} num_updates {}\n", job_id, tor_id, pair.second);
-    }
-    auto core = (Switch*) getParentModule()->getSubmodule("core");
-    core->set_num_updates_for_job(job_id, num_updates_for_tor.size());
-    EV << fmt::format("jid {} set core switch num_updates {}\n", job_id, num_updates_for_tor.size());
-
-    core->set_top_level_for_job(job_id, true);
-    core->set_gate_ids_for_job(job_id, num_updates_for_tor);
-    for (unsigned i = 0; i < switch_ports; ++i) {
-        auto tor = (Switch*) getParentModule()->getSubmodule("tors", i);
-        tor->set_top_level_for_job(job_id, false);
-        tor->set_gate_ids_for_job(job_id, placement);
+    if (placement.empty()) {
+        // can't satisfy placement
+        return false;
     }
 
+    job->setNum_workers_allocated(placement.size());
+    job->setStart_time(simTime());
+    emit(jstSignal, simTime());
+    emit(jwtSignal, simTime()-job->getSubmit_time());
+    unsigned rank = 0;
+    hierarchy->setup_job(job, placement);
+    for (auto pair : placement) {
+        auto wid = pair.first;
+        auto gpus = pair.second;
+        EV << "Use " << gpus << " GPUs of Worker " << wid << endl;
+        free_gpus[wid] -= gpus;
+        auto dup = job->dup();
+        dup->setKind(3); // for workers to identify new job arrival
+        // local copy job uses kind as number of workers that finished the job
+        dup->setGpu(gpus);
+        dup->setRank(rank++);
+        sendDirect(dup, workers[wid], "directin");
+    }
+    return true;
 }
 
 void JobDispatcher::handleMessage(cMessage *msg) {
-    auto job = check_and_cast<Job*>(msg);
-    if (job->getFinish_time() == 0) {
-        // this is a newly submitted job
-        EV << "Received submitted job " << job->getJob_id() << endl;
-        jobs[job->getJob_id()] = job;
-    } else { // this is a finished job
-        EV << "Finished job " << job->getJob_id() << endl;
-        jobs.erase(job->getJob_id());
-        delete job;
-    }
-
-    auto next_job = (this->*pick_a_job_to_execute)();
-    if (!next_job) {
+    if (msg->getKind() == 4) {
+        // HierarchyQuery
+        auto q = (HierarchyQuery*) msg;
+        tor_id_for_worker[q->getPath(0)] = q->getPath(1);
+        free_gpus[q->getPath(0)] = q->getNum_gpus();
+        workers[q->getPath(0)] = (Worker*)q->getModules(0);
+        tors[q->getPath(1)] = (Switch*)q->getModules(1);
+        hierarchy->process_hierarchy_query(q);
+        delete msg;
         return;
     }
-
-    auto workers_to_execute_job_on = (this->*get_placement)(job);
-
-    job->setNum_workers_allocated(workers_to_execute_job_on.size());
-    job->setStart_time(simTime());
-    unsigned rank = 0;
-    (this->*setup_switches)(job->getJob_id(), workers_to_execute_job_on);
-    for (auto pair : workers_to_execute_job_on) {
-        auto worker = pair.first;
-        auto gpus = pair.second;
-        EV << "Use " << gpus << " GPUs of Worker " << worker->getId() << endl;
-
-        auto dup = job->dup();
-        dup->setGpu(gpus);
-        dup->setRank(rank++);
-        sendDirect(dup, worker, "jobin");
+    auto job = (Job*) msg;
+    if (job->getFinish_time() == 0) {
+        // this is a newly submitted job
+        EV << "Received submitted job " << job->getJob_id() << " at " << simTime() << endl;
+        jobs[job->getJob_id()] = job; // saved as a local copy, don't delete
+        job->setKind(0); // use kind as number of workers that finished the job
+        emit(jsmtSignal, job->getSubmit_time());
+        while (tryDispatchAJob()) {
+            // send jobs until nothing left or can be placed
+        }
+    } else { // a worker reports a finished job
+        auto local_copy = jobs[job->getJob_id()];
+        local_copy->setKind(local_copy->getKind() + 1);
+        // worker sets kind using its id
+        free_gpus[job->getWorker_id()] -= job->getGpu();
+        if (local_copy->getKind() == local_copy->getNum_workers_allocated()) {
+            // all workers finished
+            EV << "Finished job " << job->getJob_id() << " at " << simTime()
+                      << endl;
+            emit(jctSignal, simTime());
+            delete local_copy;
+            jobs.erase(job->getJob_id());
+            while (tryDispatchAJob()) {
+                // send jobs until nothing left or can be placed
+            }
+        }
+        delete job;
     }
-    delete job;
+}
 
-//    auto a = sample(std::vector<unsigned> { 1, 2, 3, 4, 4 }, 3);
+JobDispatcher::~JobDispatcher() {
+    // clean local copies
+    for (auto pair : jobs) {
+        delete pair.second;
+    }
+    jobs.clear();
+    delete job_scheduling;
+    delete job_placement;
+    delete hierarchy;
 }
