@@ -1,4 +1,5 @@
 #include "TrainingProcess.h"
+#include "ModelStats.h"
 #include "Worker.h"
 
 Define_Module(TrainingProcess);
@@ -6,22 +7,21 @@ Define_Module(TrainingProcess);
 void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size, uint64_t iter) {
     auto req = new CollectiveOperationRequest();
     req->setKind(0);
-//    req->setAllreducer_id(allreducer->getId());
     req->setTraining_process_id(getId());
     req->setWorker_id(worker->getId());
+    req->setModel(job->getModel());
     req->setSize(size);
     req->setRank(job->getRank());
     req->setLayer(layer);
     req->setTensor_key(
             hasher(fmt::format("jid{}tid{}iter{}", job->getJob_id(), layer, iter)));
     req->setJob_id(job->getJob_id());
-    req->setNum_workers_allocated(n_workers);
-
+    req->setNum_workers_allocated(job->getNum_workers_allocated());
     if (collective_scheduler) {
         EV << "Enqueue Allreduce" << endl;
         sendDirect(req, collective_scheduler, "directin");
     } else { // send directly to Worker
-        EV << "Start Allreduce" << endl;
+        EV_DEBUG << fmt::format("TrainingProcess start allreduce for job {} layer {} size {} iter {}\n", job->getJob_id(), layer, size, iter);
         sendDirect(req, getParentModule(), "directin");
     }
 }
@@ -51,16 +51,18 @@ void TrainingProcess::activity() {
     collective_scheduler = getSimulation()->findModuleByPath("<root>.collective_scheduler");
     worker = (Worker*) getParentModule();
     if (collective_scheduler) {
-        EV << "Collective Scheduler is " << collective_scheduler->getFullName()
+        EV_DEBUG << "Collective Scheduler is " << collective_scheduler->getFullName()
                   << endl;
     } else
-        EV << "No Collective Scheduler" << endl;
+        EV_DEBUG << "No Collective Scheduler" << endl;
     auto job = check_and_cast<Job*>(receive());
 //    setup(job);
     auto rank = job->getRank();
     auto jid = job->getJob_id();
     auto iters = job->getIters();
-    auto num_layers = model.size();
+
+    auto model = job->getModel();
+    auto num_layers = n_layers(model);
 
     bool distributed = job->getNum_workers_allocated() > 1;
 //    if (distributed) {
@@ -70,26 +72,26 @@ void TrainingProcess::activity() {
 //                  << allreducer->getName() << endl;
 //    }
     can_do_fp.resize(num_layers, true);
-    EV << "Start Job " << jid << " as rank " << rank << endl;
+    EV << fmt::format("Start Job {} as rank {} iters {} num_layers {}", jid, rank, iters, num_layers) << endl;
     cQueue AckQueue(fmt::format("Allreducer{}", getId()).c_str());
 
     for (unsigned iter = 0; iter < iters; ++iter) {
-        for (size_t i = 0; i < num_layers; ++i) {
-            while (!can_do_fp[i]) {
+        for (size_t layer = 0; layer < num_layers; ++layer) {
+            while (!can_do_fp[layer]) {
                 process_ack(check_and_cast<LayerAck*>(receive()));
             }
-            waitAndProcessAck(forward_pass_time[i], &AckQueue);
-            can_do_fp[i] = false;
+            waitAndProcessAck(SimTime(fp_times[model][layer], SIMTIME_PS), &AckQueue);
+            can_do_fp[layer] = false;
         }
 
         for (int layer = num_layers - 1; layer >= 0; --layer) {
-            waitAndProcessAck(backward_pass_time[layer], &AckQueue);
+            waitAndProcessAck(SimTime(bp_times[model][layer], SIMTIME_PS), &AckQueue);
             if (distributed) {
-                allreduce(job, layer, model[layer], iter);
+                allreduce(job, layer, model_sizes[model][layer], iter);
             } else {
                 auto ack = new LayerAck();
                 ack->setLayer(layer);
-                scheduleAfter(weight_update_time[layer], ack);
+                scheduleAfter(SimTime(wu_times[model][layer], SIMTIME_PS), ack);
             }
         }
     }

@@ -6,11 +6,11 @@
 Define_Module(Switch);
 
 void Switch::initialize() {
-    EV << fmt::format("Switch {} has {} up_ports\n", getId(),
-                      gateSize("up_ports"));
+//    EV << fmt::format("Switch {} has {} up_ports\n", getId(),
+//                      gateSize("up_ports"));
     for (unsigned i=0; i< gateSize("down_ports"); ++i) {
         auto g = gate("down_ports$o", i);
-        auto id = g->getPathEndGate()->getOwnerModule()->getId();
+        auto id = g->getPathEndGate()->getOwnerModule()->gate("outside$o")->getPathEndGate()->getOwnerModule()->gate("inside$o")->getPathEndGate()->getOwnerModule()->getId();
         gate_id[id] = g->getId();
     }
 }
@@ -59,12 +59,13 @@ void Switch::handleMessage(cMessage *msg) {
                 gate_ids_for_job[job_id].insert(gate_id[setup->getIds(i)]);
             }
             delete msg;
-
             break;
         }
         default:
+            EV_DEBUG << fmt::format("wrong message of kind from {}\n", msg->getKind(), msg->getSenderModule()->getName());
             delete msg;
             EV_FATAL << "wrong message\n";
+            break;
         }
         return;
     }
@@ -74,7 +75,6 @@ void Switch::handleMessage(cMessage *msg) {
             1 - p->getVer());
     EV_DEBUG << "Switch " << getId() << " get packet" << endl;
     if (p->getUpward()) {
-        EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
         auto &seen = seen_for_tensor_key[p->getTensor_key()];
         auto &count = count_for_tensor_key[p->getTensor_key()];
         auto &seen_key = seen[key];
@@ -82,21 +82,17 @@ void Switch::handleMessage(cMessage *msg) {
             EV_FATAL << "Switch " << getId()
                             << " received shadow buffer request" << endl;
         } else {
-            EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
             seen_key.insert(p->getFrom_id());
             seen[key_of_the_other_slot].erase(p->getFrom_id());
             count[key] = ((count[key] + 1) % p->getN_workers())
                     % num_updates_for_job[p->getJob_id()];
             if (count[key] == 0) {
-                EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
                 EV_DEBUG << "Switch " << getId() << " done allreduce" << endl;
                 // done aggregation
                 if (top_level_for_job[p->getJob_id()]) { // downward
-                    EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
                     count[key] = p->getN_workers();
                     multicast_downward(p);
                 } else {  // upward
-                    EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
                     // send to upper level
                     auto pkt = p->dup();
                     pkt->setFrom_id(getId());
@@ -105,7 +101,6 @@ void Switch::handleMessage(cMessage *msg) {
             } // else drop (free) packet
         }
     } else {
-        EV_DEBUG << "Switch " << getId() << " " << __LINE__ << endl;
         auto &count = count_for_tensor_key[p->getTensor_key()];
 //        // received from upper level switch
         count[key] = p->getN_workers();

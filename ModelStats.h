@@ -12,20 +12,23 @@
 #include <utility>
 #include <vector>
 
-constexpr short alexnet = 20;
-constexpr short bert = 21;
-constexpr short googlenet = 22;
-constexpr short inception = 23;
-constexpr short resnet101 = 24;
-constexpr short resnet152 = 25;
-constexpr short resnet50 = 26;
-constexpr short vgg11 = 27;
-constexpr short vgg16 = 28;
-constexpr short vgg19 = 29;
-constexpr short test = 30;
+constexpr short alexnet = 0;
+constexpr short bert = 1;
+constexpr short googlenet = 2;
+constexpr short inception = 3;
+constexpr short resnet101 = 4;
+constexpr short resnet152 = 5;
+constexpr short resnet50 = 6;
+constexpr short vgg11 = 7;
+constexpr short vgg16 = 8;
+constexpr short vgg19 = 9;
+constexpr short test = 10;
+
+constexpr size_t max_layers = 38; // bert
+constexpr size_t num_models = 11;
 
 
-constexpr uint64_t model_sizes[11][38] = {
+constexpr uint64_t model_sizes[num_models][max_layers+1] = {
         {330688, 39891840, 16781312, 4097000},
         {31260672, 8927232, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 1053698},
         {266368, 6358536},
@@ -39,7 +42,7 @@ constexpr uint64_t model_sizes[11][38] = {
         {26214400}
 };
 
-constexpr uint64_t fp_times[11][38] = {
+constexpr uint64_t fp_times[num_models][max_layers+1] = {
         {6487422000, 5547996500, 482768500, 254498000},
         {201679500, 1695811500, 613803500, 977431500, 1360976000, 592250500, 1002414000, 1333952500, 602293500, 966248500, 1338686000, 587513500, 999311000, 1333727000, 601031500, 968510000, 1340979000, 586090500, 987556500, 1495193000, 605150500, 972399500, 1354451000, 588239500, 993769500, 1332182000, 611251500, 984363000, 1368996000, 602952000, 996895000, 1357962500, 615189500, 989255000, 1370287500, 601601500, 999744500, 411394500},
         {14777889000, 38211556500},
@@ -53,7 +56,7 @@ constexpr uint64_t fp_times[11][38] = {
         {0}
 };
 
-constexpr uint64_t bp_times[11][38] = {
+constexpr uint64_t bp_times[num_models][max_layers+1] = {
         {6780418500, 7897807000, 791112000, 538649500},
         {416228000, 229544768000, 6106568500, 8326861000, 14241184000, 6104166500, 8338906500, 14249240000, 6113811000, 8326589000, 14238364500, 6109754000, 8344041000, 14020027500, 2887953000, 7535392000, 15202323000, 10084485000, 6085473500, 15277926000, 10172296000, 7242516000, 15409178500, 8956063000, 7463055500, 15079349000, 9197268000, 7383737500, 1604860500, 810691500, 512126500, 1188866500, 809201000, 512058000, 1190091000, 825784000, 534169000, 4128649500},
         {34875528000, 72078958000},
@@ -67,7 +70,7 @@ constexpr uint64_t bp_times[11][38] = {
         {0}
 };
 
-constexpr uint64_t wu_times[11][38] = {
+constexpr uint64_t wu_times[num_models][max_layers+1] = {
         {1167345, 140820177, 59238865, 14462613},
         {17613563287, 5029973950, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 593697295},
         {53534230, 1277928770},
@@ -81,20 +84,24 @@ constexpr uint64_t wu_times[11][38] = {
         {0}
 };
 
+constexpr size_t n_layers(short model, size_t layer=1){
+    return model_sizes[model][layer-1] != 0 ? layer : n_layers(model, layer+1);
+}
+
 constexpr uint64_t model_size(short m, size_t layer) {
-    return model_sizes[m-alexnet][layer];
+    return model_sizes[m][layer];
 }
 
 constexpr uint64_t fp_time(short m, size_t layer) {
-    return fp_times[m-alexnet][layer];
+    return fp_times[m][layer];
 }
 
 constexpr uint64_t bp_time(short m, size_t layer) {
-    return bp_times[m-alexnet][layer];
+    return bp_times[m][layer];
 }
 
 constexpr uint64_t wu_time(short m, size_t layer) {
-    return wu_times[m-alexnet][layer];
+    return wu_times[m][layer];
 }
 
 

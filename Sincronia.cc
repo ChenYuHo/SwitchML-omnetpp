@@ -27,8 +27,7 @@ void Sincronia::handleMessage(cMessage *msg) {
         requests.push_back(request);
         if (requests.size() == request->getNum_workers_allocated()) {
             for (auto req : requests) {
-                auto reducer = this->getSimulation()->getModule(
-                        req->getAllreducer_id());
+                auto reducer = this->getSimulation()->getModule(req->getWorker_id());
                 this->sendDirect(req, reducer, "directin");
             }
             queue.erase(request->getTensor_key());

@@ -1,8 +1,9 @@
 simple Worker
 {
     parameters:
-        int num_slots;
-        int num_updates;
+        int MTU = default(0);
+        int num_slots = default(512);
+        int num_updates = default(0);
         int num_gpus = default(4);
         int test_tensor_size = default(26214400);
         @display("i=device/server");

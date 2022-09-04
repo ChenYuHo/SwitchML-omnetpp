@@ -76,9 +76,9 @@ message Setup
 
 message CollectiveOperationRequest
 {
-    int allreducer_id;
     int training_process_id;
     int worker_id;
+    short model;
     uint64_t size;
     uint64_t rank;
     uint64_t layer;

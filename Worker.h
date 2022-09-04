@@ -32,7 +32,7 @@ private:
     std::unordered_map<uint64_t, cQueue> collective_operation_requests_for_job {};
     std::unordered_map<uint64_t, bool> doing_collective_operation {};
     void startOneCollectiveOperation(uint64_t);
-
+    int64_t MTU;
 protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;
