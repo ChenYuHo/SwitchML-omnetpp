@@ -1,4 +1,16 @@
-#include "Sincronia.h"
+#include "SwitchML_m.h"
+#include <unordered_map>
+using namespace omnetpp;
+
+class Sincronia: public cSimpleModule {
+private:
+    std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> queue { };
+protected:
+    virtual void initialize() override;
+    virtual void handleMessage(cMessage *msg) override;
+};
+
+
 Define_Module(Sincronia);
 
 void Sincronia::initialize() {

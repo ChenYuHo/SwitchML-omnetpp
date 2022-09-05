@@ -66,7 +66,7 @@ bool JobDispatcher::tryDispatchAJob() {
     for (auto pair : placement) {
         auto wid = pair.first;
         auto gpus = pair.second;
-        EV << "Use " << gpus << " GPUs of Worker " << wid << endl;
+        EV_DEBUG << "Use " << gpus << " GPUs of Worker " << wid << endl;
         free_gpus[wid] -= gpus;
         auto dup = job->dup();
         dup->setKind(3); // for workers to identify new job arrival
@@ -93,7 +93,7 @@ void JobDispatcher::handleMessage(cMessage *msg) {
     auto job = (Job*) msg;
     if (job->getFinish_time() == 0) {
         // this is a newly submitted job
-        EV << "Received submitted job " << job->getJob_id() << " at " << simTime() << endl;
+        EV_DEBUG << "Received submitted job " << job->getJob_id() << " at " << simTime() << endl;
         jobs[job->getJob_id()] = job; // saved as a local copy, don't delete
         job->setKind(0); // use kind as number of workers that finished the job
         emit(jsmtSignal, job->getSubmit_time());
@@ -107,7 +107,7 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         free_gpus[job->getWorker_id()] -= job->getGpu();
         if (local_copy->getKind() == local_copy->getNum_workers_allocated()) {
             // all workers finished
-            EV << "Finished job " << job->getJob_id() << " at " << simTime()
+            EV_DEBUG << "Finished job " << job->getJob_id() << " at " << simTime()
                       << endl;
             emit(jctSignal, simTime());
             delete local_copy;

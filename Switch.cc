@@ -6,11 +6,11 @@
 Define_Module(Switch);
 
 void Switch::initialize() {
-//    EV << fmt::format("Switch {} has {} up_ports\n", getId(),
-//                      gateSize("up_ports"));
-    for (unsigned i=0; i< gateSize("down_ports"); ++i) {
+    for (unsigned i = 0; i < gateSize("down_ports"); ++i) {
         auto g = gate("down_ports$o", i);
-        auto id = g->getPathEndGate()->getOwnerModule()->gate("outside$o")->getPathEndGate()->getOwnerModule()->gate("inside$o")->getPathEndGate()->getOwnerModule()->getId();
+        auto id =
+                g->getPathEndGate()->getOwnerModule()->gate("outside$o")->getPathEndGate()->getOwnerModule()->gate(
+                        "inside$o")->getPathEndGate()->getOwnerModule()->getId();
         gate_id[id] = g->getId();
     }
 }
@@ -62,7 +62,10 @@ void Switch::handleMessage(cMessage *msg) {
             break;
         }
         default:
-            EV_DEBUG << fmt::format("wrong message of kind from {}\n", msg->getKind(), msg->getSenderModule()->getName());
+            EV_DEBUG
+                            << fmt::format("wrong message of kind from {}\n",
+                                    msg->getKind(),
+                                    msg->getSenderModule()->getName());
             delete msg;
             EV_FATAL << "wrong message\n";
             break;
@@ -100,9 +103,8 @@ void Switch::handleMessage(cMessage *msg) {
                 }
             } // else drop (free) packet
         }
-    } else {
+    } else { // received from upper level switch
         auto &count = count_for_tensor_key[p->getTensor_key()];
-//        // received from upper level switch
         count[key] = p->getN_workers();
         multicast_downward(p);
     }
