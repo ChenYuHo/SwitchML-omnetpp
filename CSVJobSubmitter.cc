@@ -23,7 +23,8 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
 
     // start reading csv
     io::CSVReader<5/*column count*/> csvin(par("file").stringValue());
-    csvin.read_header(io::ignore_missing_column, "num_gpu", "duration", "submit_time", "iterations", "model");
+    csvin.read_header(io::ignore_missing_column, "num_gpu", "duration",
+            "submit_time", "iterations", "model");
     unsigned num_gpu;
     unsigned duration;
     unsigned submit_time; // originally in seconds
@@ -71,9 +72,12 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
         }
     }
 
-    std::sort(jobs.begin(), jobs.end(), [](Job *a, Job *b){
-        return a->getSubmit_time() == b->getSubmit_time() ? a->getJob_id() < b->getJob_id() : a->getSubmit_time() < b->getSubmit_time();
-    });
+    std::sort(jobs.begin(), jobs.end(),
+            [](Job *a, Job *b) {
+                return a->getSubmit_time() == b->getSubmit_time() ?
+                        a->getJob_id() < b->getJob_id() :
+                        a->getSubmit_time() < b->getSubmit_time();
+            });
 
     // re-id jobs, smaller jid has earlier submission time
     uint64_t jid = 1;

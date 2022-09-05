@@ -16,7 +16,8 @@ void JobDispatcher::initialize() {
     for (unsigned i = 0; i < n_workers; ++i) {
         auto msg = new HierarchyQuery("query", 4);
         msg->setFrom_id(getId());
-        sendDirect(msg, getParentModule()->getSubmodule("workers", i), "directin");
+        sendDirect(msg, getParentModule()->getSubmodule("workers", i),
+                "directin");
     }
 
     std::string h = par("hierarchy");
@@ -60,7 +61,7 @@ bool JobDispatcher::tryDispatchAJob() {
     job->setNum_workers_allocated(placement.size());
     job->setStart_time(simTime());
     emit(jstSignal, simTime());
-    emit(jwtSignal, simTime()-job->getSubmit_time());
+    emit(jwtSignal, simTime() - job->getSubmit_time());
     unsigned rank = 0;
     hierarchy->setup_job(job, placement);
     for (auto pair : placement) {
@@ -84,8 +85,8 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         auto q = (HierarchyQuery*) msg;
         tor_id_for_worker[q->getPath(0)] = q->getPath(1);
         free_gpus[q->getPath(0)] = q->getNum_gpus();
-        workers[q->getPath(0)] = (Worker*)q->getModules(0);
-        tors[q->getPath(1)] = (Switch*)q->getModules(1);
+        workers[q->getPath(0)] = (Worker*) q->getModules(0);
+        tors[q->getPath(1)] = (Switch*) q->getModules(1);
         hierarchy->process_hierarchy_query(q);
         delete msg;
         return;
@@ -93,7 +94,8 @@ void JobDispatcher::handleMessage(cMessage *msg) {
     auto job = (Job*) msg;
     if (job->getFinish_time() == 0) {
         // this is a newly submitted job
-        EV_DEBUG << "Received submitted job " << job->getJob_id() << " at " << simTime() << endl;
+        EV_DEBUG << "Received submitted job " << job->getJob_id() << " at "
+                        << simTime() << endl;
         jobs[job->getJob_id()] = job; // saved as a local copy, don't delete
         job->setKind(0); // use kind as number of workers that finished the job
         emit(jsmtSignal, job->getSubmit_time());
@@ -107,8 +109,8 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         free_gpus[job->getWorker_id()] -= job->getGpu();
         if (local_copy->getKind() == local_copy->getNum_workers_allocated()) {
             // all workers finished
-            EV_DEBUG << "Finished job " << job->getJob_id() << " at " << simTime()
-                      << endl;
+            EV_DEBUG << "Finished job " << job->getJob_id() << " at "
+                            << simTime() << endl;
             emit(jctSignal, simTime());
             delete local_copy;
             jobs.erase(job->getJob_id());

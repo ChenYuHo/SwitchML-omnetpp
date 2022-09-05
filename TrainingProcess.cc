@@ -4,7 +4,8 @@
 
 Define_Module(TrainingProcess);
 
-void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size, uint64_t iter) {
+void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size,
+        uint64_t iter) {
     auto req = new CollectiveOperationRequest();
     req->setKind(0);
     req->setTraining_process_id(getId());
@@ -14,14 +15,19 @@ void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size, uint64_
     req->setRank(job->getRank());
     req->setLayer(layer);
     req->setTensor_key(
-            hasher(fmt::format("jid{}tid{}iter{}", job->getJob_id(), layer, iter)));
+            hasher(
+                    fmt::format("jid{}tid{}iter{}", job->getJob_id(), layer,
+                            iter)));
     req->setJob_id(job->getJob_id());
     req->setNum_workers_allocated(job->getNum_workers_allocated());
     if (collective_scheduler) {
         EV_DEBUG << "Enqueue Allreduce" << endl;
         sendDirect(req, collective_scheduler, "directin");
     } else { // send directly to Worker
-        EV_DEBUG << fmt::format("TrainingProcess start allreduce for job {} layer {} size {} iter {}\n", job->getJob_id(), layer, size, iter);
+        EV_DEBUG
+                        << fmt::format(
+                                "TrainingProcess start allreduce for job {} layer {} size {} iter {}\n",
+                                job->getJob_id(), layer, size, iter);
         sendDirect(req, getParentModule(), "directin");
     }
 }
@@ -40,11 +46,12 @@ void TrainingProcess::waitAndProcessAck(simtime_t wait_time, cQueue *AckQueue) {
 
 void TrainingProcess::activity() {
     // retrieve parameters
-    collective_scheduler = getSimulation()->findModuleByPath("<root>.collective_scheduler");
+    collective_scheduler = getSimulation()->findModuleByPath(
+            "<root>.collective_scheduler");
     worker = (Worker*) getParentModule();
     if (collective_scheduler) {
-        EV_DEBUG << "Collective Scheduler is " << collective_scheduler->getFullName()
-                  << endl;
+        EV_DEBUG << "Collective Scheduler is "
+                        << collective_scheduler->getFullName() << endl;
     } else
         EV_DEBUG << "No Collective Scheduler" << endl;
     auto job = check_and_cast<Job*>(receive());
@@ -57,7 +64,10 @@ void TrainingProcess::activity() {
 
     bool distributed = job->getNum_workers_allocated() > 1;
     can_do_fp.resize(num_layers, true);
-    EV_DEBUG << fmt::format("Start Job {} as rank {} iters {} num_layers {}", jid, rank, iters, num_layers) << endl;
+    EV_DEBUG
+                    << fmt::format(
+                            "Start Job {} as rank {} iters {} num_layers {}",
+                            jid, rank, iters, num_layers) << endl;
     cQueue AckQueue(fmt::format("Allreducer{}", getId()).c_str());
 
     for (unsigned iter = 0; iter < iters; ++iter) {
@@ -65,12 +75,14 @@ void TrainingProcess::activity() {
             while (!can_do_fp[layer]) {
                 process_ack(check_and_cast<LayerAck*>(receive()));
             }
-            waitAndProcessAck(SimTime(fp_times[model][layer], SIMTIME_PS), &AckQueue);
+            waitAndProcessAck(SimTime(fp_times[model][layer], SIMTIME_PS),
+                    &AckQueue);
             can_do_fp[layer] = false;
         }
 
         for (int layer = num_layers - 1; layer >= 0; --layer) {
-            waitAndProcessAck(SimTime(bp_times[model][layer], SIMTIME_PS), &AckQueue);
+            waitAndProcessAck(SimTime(bp_times[model][layer], SIMTIME_PS),
+                    &AckQueue);
             if (distributed) {
                 allreduce(job, layer, model_sizes[model][layer], iter);
             } else {
@@ -87,7 +99,9 @@ void TrainingProcess::activity() {
         }
     }
 
-    EV_DEBUG << fmt::format("rank {} done job {} at {}\n", rank, jid, simTime().raw());
+    EV_DEBUG
+                    << fmt::format("rank {} done job {} at {}\n", rank, jid,
+                            simTime().raw());
     job->setFinish_time(simTime());
     job->setKind(5);
     this->sendDirect(job, getParentModule(), "directin");

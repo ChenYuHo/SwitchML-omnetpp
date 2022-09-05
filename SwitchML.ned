@@ -11,7 +11,7 @@ network TwoLayers
         int switch_ports = default(2);
         int n_workers = switch_ports*(switch_ports-1);
         job_submitter.max_jobs_to_submit = 2;
-        collective_scheduler.typename = "Sincronia";
+        collective_scheduler.typename = "Fifo";
         job_submitter.file = "1.csv";
     submodules:
         core_queues_down[switch_ports]: L2Queue;
@@ -34,10 +34,9 @@ network TwoLayers
         job_submitter: <default("CSVJobSubmitter")> like IJobSubmitter;
         job_dispatcher: JobDispatcher;
         collective_scheduler: <default("Sincronia")> like ICollectiveScheduler if typename!="none";
-        
     connections allowunconnected:
         // ToR to Core
-        for i=0..switch_ports-1 {   
+        for i=0..switch_ports-1 {
             tors[i].up_ports[0] <--> tor_queues_up[i].inside;
             tor_queues_up[i].outside <--> DatarateChannel <--> core_queues_down[i].outside;
             core_queues_down[i].inside <--> core.down_ports[i];

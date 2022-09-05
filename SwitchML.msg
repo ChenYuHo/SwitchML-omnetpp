@@ -1,15 +1,4 @@
-//
-// This file is part of an OMNeT++/OMNEST simulation example.
-//
-// Copyright (C) 1992-2015 Andras Varga
-//
-// This file is distributed WITHOUT ANY WARRANTY. See the file
-// `license' for details on this and other legal matters.
-//
-
-
-enum SwitchMLPacketType//        model = vector<uint64_t> { 405824, 6755584, 7417344, 7875584, 3102696 };
-
+enum SwitchMLPacketType
 {
     SWITCHML_CONN_REQ = 0;
     SWITCHML_CONN_ACK = 1;
@@ -17,20 +6,6 @@ enum SwitchMLPacketType//        model = vector<uint64_t> { 405824, 6755584, 741
     SWITCHML_DISC_ACK = 3;
     SWITCHML_DATA = 4;
 };
-
-//enum Model
-//{
-//    alexnet = 0;
-//    vgg11 = 1;
-//    vgg16 = 2;
-//    vgg19 = 3;
-//    inception = 4;
-//    googlenet = 5;
-//    resnet50 = 6;
-//    resnet101 = 7;
-//    resnet152 = 8;
-//    bert = 9;
-//}
 
 packet SwitchMLPacket
 {
@@ -54,7 +29,6 @@ packet SwitchMLPacket
 message LayerAck
 {
     uint64_t layer;
-    simtime_t weight_update_time;
     uint64_t job_id;
     bool completed;
 };

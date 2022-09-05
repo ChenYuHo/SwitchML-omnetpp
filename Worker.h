@@ -1,10 +1,3 @@
-/*
- * Worker.h
- *
- *  Created on: Aug 29, 2022
- *      Author: root
- */
-
 #ifndef WORKER_H_
 #define WORKER_H_
 #include <omnetpp.h>
@@ -19,7 +12,6 @@ class Worker: public cSimpleModule {
 private:
     cModuleType *srvProcType;
     unsigned free_gpus { 0 };
-    Switch *tor { nullptr };
     std::unordered_map<uint32_t, std::unordered_set<uint32_t>> received_pkts { };
     cGate *out_gate;
     void sendNextPacket(SwitchMLPacket*, uint32_t);
@@ -29,8 +21,8 @@ private:
     cModule *collective_scheduler;
     cModule *job_dispatcher;
     unsigned num_jobs_given { 0 };
-    std::unordered_map<uint64_t, cQueue> collective_operation_requests_for_job {};
-    std::unordered_map<uint64_t, bool> doing_collective_operation {};
+    std::unordered_map<uint64_t, cQueue> collective_operation_requests_for_job { };
+    std::unordered_map<uint64_t, bool> doing_collective_operation { };
     void startOneCollectiveOperation(uint64_t);
     int64_t MTU;
 protected:

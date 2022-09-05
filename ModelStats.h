@@ -1,10 +1,3 @@
-/*
- * ModelStats.h
- *
- *  Created on: Aug 31, 2022
- *      Author: root
- */
-
 #ifndef MODELSTATS_H_
 #define MODELSTATS_H_
 #include <omnetpp.h>
@@ -26,7 +19,6 @@ constexpr short test = 10;
 
 constexpr size_t max_layers = 38; // bert
 constexpr size_t num_models = 11;
-
 
 constexpr uint64_t model_sizes[num_models][max_layers+1] = {
         {330688, 39891840, 16781312, 4097000},
@@ -103,8 +95,5 @@ constexpr uint64_t bp_time(short m, size_t layer) {
 constexpr uint64_t wu_time(short m, size_t layer) {
     return wu_times[m][layer];
 }
-
-
-//, SimTime(153378150, SIMTIME_PS) };
 
 #endif /* MODELSTATS_H_ */

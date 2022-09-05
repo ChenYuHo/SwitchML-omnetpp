@@ -32,20 +32,25 @@ void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
     p->setVer(1 - pkt->getVer());
     p->setOffset(next_offset);
     p->setUpward(true);
-//    EV_DEBUG << "Worker send next packet\n";
     send(p, out_gate);
     // caller should delete pkt
 }
 
 void Worker::startOneCollectiveOperation(uint64_t job_id) {
 
-    auto m = (CollectiveOperationRequest*) (collective_operation_requests_for_job[job_id].pop());
+    auto m =
+            (CollectiveOperationRequest*) (collective_operation_requests_for_job[job_id].pop());
     doing_collective_operation[job_id] = true;
     auto grad_size = m->getSize();
     auto num_pkts_expected = grad_size / num_updates;
     if (grad_size % num_updates)
         num_pkts_expected += 1;
-    EV_DEBUG << fmt::format("Worker {} startOneCollectiveOperation for job {} grad_size {}, expect {} pkts, queue still has {} reqs", getId(), job_id, grad_size, num_pkts_expected, collective_operation_requests_for_job[job_id].getLength()) << endl;
+    EV_DEBUG
+                    << fmt::format(
+                            "Worker {} startOneCollectiveOperation for job {} grad_size {}, expect {} pkts, queue still has {} reqs",
+                            getId(), job_id, grad_size, num_pkts_expected,
+                            collective_operation_requests_for_job[job_id].getLength())
+                    << endl;
     for (uint64_t slot = 0; slot < num_slots; ++slot) {
         auto offset = slot * num_updates;
         if (offset >= grad_size)
@@ -66,7 +71,6 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
         p->setChunk_id(m->getChunk_id());
         p->setModel(m->getModel());
         p->setUpward(true);
-//        EV_DEBUG << "Worker send packet\n";
         send(p, out_gate);
     }
     delete m;
@@ -79,7 +83,12 @@ void Worker::handleMessage(cMessage *msg) {
             // CollectiveOperationRequest from CollectiveOperationScheduler or TrainingProcess
             auto req = (CollectiveOperationRequest*) msg;
             collective_operation_requests_for_job[req->getJob_id()].insert(req);
-            EV_DEBUG << fmt::format("Worker {} collective_operation_requests_for_job for job {} queue has {} reqs", getId(), req->getJob_id(), collective_operation_requests_for_job[req->getJob_id()].getLength()) << endl;
+            EV_DEBUG
+                            << fmt::format(
+                                    "Worker {} collective_operation_requests_for_job for job {} queue has {} reqs",
+                                    getId(), req->getJob_id(),
+                                    collective_operation_requests_for_job[req->getJob_id()].getLength())
+                            << endl;
             if (!doing_collective_operation[req->getJob_id()]) {
                 startOneCollectiveOperation(req->getJob_id());
             }
@@ -88,14 +97,16 @@ void Worker::handleMessage(cMessage *msg) {
         case 2: {
             // LayerAck from self, direct to TrainingProcess
             auto ack = (LayerAck*) msg;
-            sendDirect(ack, training_process_for_job[ack->getJob_id()], "directin");
+            sendDirect(ack, training_process_for_job[ack->getJob_id()],
+                    "directin");
             break;
         }
         case 3: { // new Job
             // mod will self destroy
-            cModule *mod = srvProcType->createScheduleInit(
-                    fmt::format("Worker{}_Job{}", getId(),
-                            ++num_jobs_given).c_str(), this);
+            cModule *mod =
+                    srvProcType->createScheduleInit(
+                            fmt::format("Worker{}_Job{}", getId(),
+                                    ++num_jobs_given).c_str(), this);
             sendDirect(msg, mod, "directin");
             auto job = check_and_cast<Job*>(msg);
             free_gpus += job->getGpu();
@@ -110,11 +121,12 @@ void Worker::handleMessage(cMessage *msg) {
             q->appendModules(this);
             q->setNum_gpus(free_gpus);
             job_dispatcher = getSimulation()->getModule(q->getFrom_id());
-            sendDirect(q, out_gate->getPathEndGate()->getOwnerModule(), "directin");
+            sendDirect(q, out_gate->getPathEndGate()->getOwnerModule(),
+                    "directin");
             break;
         }
         case 5: { // finished job from TrainingProcess
-            auto job  = (Job*) msg;
+            auto job = (Job*) msg;
             job->setWorker_id(getId());
             sendDirect(job, job_dispatcher, "directin");
             break;
@@ -137,13 +149,10 @@ void Worker::handleMessage(cMessage *msg) {
             if (set.size() == p->getNum_pkts_expected()) {
                 // allreduce done, notify allreducer
                 EV_DEBUG << fmt::format("Worker {} done allreduce\n", getId());
-//                auto training_process = training_process_for_job[p->getJob_id()];
                 auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
                 auto ack = new LayerAck();
                 ack->setLayer(p->getLayer());
                 ack->setJob_id(p->getJob_id());
-//                auto w = wu_time(p->getModel(), p->getLayer());
-//                ack->setWeight_update_time(w);
                 ack->setCompleted(completed);
                 if (collective_scheduler) {
                     auto dup = ack->dup();
@@ -155,7 +164,9 @@ void Worker::handleMessage(cMessage *msg) {
                 if (completed) {
                     // after weight update, notify TrainingProcess this allreduce completes
                     ack->setKind(2);
-                    scheduleAfter(SimTime(wu_time(p->getModel(), p->getLayer()), SIMTIME_PS), ack);
+                    scheduleAfter(
+                            SimTime(wu_time(p->getModel(), p->getLayer()),
+                                    SIMTIME_PS), ack);
                 }
                 if (!collective_operation_requests_for_job[p->getJob_id()].isEmpty()) {
                     startOneCollectiveOperation(p->getJob_id());

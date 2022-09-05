@@ -2,7 +2,7 @@
 #include <unordered_map>
 using namespace omnetpp;
 
-class Sincronia: public cSimpleModule {
+class Fifo_CS: public cSimpleModule {
 private:
     std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> queue { };
 protected:
@@ -10,27 +10,12 @@ protected:
     virtual void handleMessage(cMessage *msg) override;
 };
 
+Define_Module(Fifo_CS);
 
-Define_Module(Sincronia);
-
-void Sincronia::initialize() {
-//    scheduleAt(simTime(), new cMessage);
-
+void Fifo_CS::initialize() {
 }
 
-/*    int allreducer_id;
- int training_process_id;
- int worker_id;
- uint64_t size;
- uint64_t rank;
- uint64_t layer;
- uint64_t tensor_key;
- uint64_t job_id;
- uint64_t num_workers_allocated;
- uint64_t num_chunks = 1;
- uint64_t chunk_id = 0;*/
-
-void Sincronia::handleMessage(cMessage *msg) {
+void Fifo_CS::handleMessage(cMessage *msg) {
     switch (msg->getKind()) {
     case 0: {
         // AllreduceRequest from TrainingProcess
@@ -39,8 +24,9 @@ void Sincronia::handleMessage(cMessage *msg) {
         requests.push_back(request);
         if (requests.size() == request->getNum_workers_allocated()) {
             for (auto req : requests) {
-                auto reducer = this->getSimulation()->getModule(req->getWorker_id());
-                this->sendDirect(req, reducer, "directin");
+                auto worker = this->getSimulation()->getModule(
+                        req->getWorker_id());
+                this->sendDirect(req, worker, "directin");
             }
             queue.erase(request->getTensor_key());
         }

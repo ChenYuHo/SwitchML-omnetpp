@@ -11,7 +11,7 @@ public:
 
 class Fifo: public JobScheduling {
 public:
-    Job* pick_a_job_to_execute(const std::map<uint64_t, Job*>& jobs) override {
+    Job* pick_a_job_to_execute(const std::map<uint64_t, Job*> &jobs) override {
         if (jobs.empty())
             return nullptr;
         return jobs.begin()->second; // sorted by jid

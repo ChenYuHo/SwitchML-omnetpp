@@ -44,7 +44,8 @@ void L2Queue::startTransmitting(cMessage *msg) {
     send(msg, "outside$o");
 
     // Schedule an event for the time when last bit will leave the gate.
-    simtime_t endTransmission = channel ? channel->getTransmissionFinishTime() : simTime();
+    simtime_t endTransmission =
+            channel ? channel->getTransmissionFinishTime() : simTime();
     scheduleAt(endTransmission, endTransmissionEvent);
 }
 
@@ -61,10 +62,12 @@ void L2Queue::handleMessage(cMessage *msg) {
         send(msg, "inside$o");
     } else if (msg->getKind() == 4) { // Worker queue get from Worker, send to Switch queue
         msg->setKind(5);
-        sendDirect(msg, gate("outside$o")->getPathEndGate()->getOwnerModule(), "directin");
+        sendDirect(msg, gate("outside$o")->getPathEndGate()->getOwnerModule(),
+                "directin");
     } else if (msg->getKind() == 5) { // Switch queue get from Worker queue, send to Switch
         msg->setKind(4);
-        sendDirect(msg, gate("inside$o")->getPathEndGate()->getOwnerModule(), "directin");
+        sendDirect(msg, gate("inside$o")->getPathEndGate()->getOwnerModule(),
+                "directin");
     } else {  // arrived on gate "inside$i"
         if (endTransmissionEvent->isScheduled()) {
             // We are currently busy, so just queue up the packet.

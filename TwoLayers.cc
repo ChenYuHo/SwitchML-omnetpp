@@ -42,5 +42,6 @@ void TwoLayers::setup_job(Job *job, const std::unordered_map<int, unsigned>& pla
     setup_for_core->setKind(6);
     job_dispatcher->sendDirect(setup_for_core, core_switch, "directin");
     EV_DEBUG << fmt::format("Core {} should receive {} num_updates (toplevel {}) for job {}\n",
-                    core_switch_id, setup_for_core->getIdsArraySize(), true, job_id);
+                            core_switch_id, setup_for_core->getIdsArraySize(),
+                            true, job_id);
 }

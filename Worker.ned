@@ -18,11 +18,3 @@ simple TrainingProcess
     gates:
         input directin;
 }
-
-//simple Allreducer
-//{
-//    parameters:
-//        int chunk_size=0; 
-//    gates:
-//        input in;
-//}
