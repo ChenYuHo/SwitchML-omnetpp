@@ -16,6 +16,7 @@ class TwoLayers;
 class JobDispatcher: public cSimpleModule {
 public:
     ~JobDispatcher();
+    bool accommodate(unordered_set<uint64_t>, uint64_t);
 private:
     friend Random;
     friend TwoLayers;
@@ -25,6 +26,8 @@ private:
     unsigned n_workers;
     unsigned switch_ports;
     std::map<uint64_t, Job*> jobs { }; // jid->job
+    std::unordered_map<uint64_t, std::unordered_set<int>> workers_for_job { };
+    std::unordered_map<uint64_t, std::unordered_set<int>> switches_for_job { };
     std::unordered_map<int, Worker*> workers { };
     std::unordered_map<int, Switch*> tors { };
     std::unordered_map<int, int> tor_id_for_worker { };

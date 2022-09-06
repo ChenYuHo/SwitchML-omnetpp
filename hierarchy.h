@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 class Switch;
 class JobDispatcher;
@@ -15,6 +16,8 @@ public:
     virtual void setup_job(Job*, const std::unordered_map<int, unsigned>&) = 0;
     virtual void process_hierarchy_query(HierarchyQuery *q) {
     }
+    virtual std::unordered_set<int> switch_ids_beyond_tors(
+            std::unordered_set<int>) = 0;
 };
 
 class TwoLayers: public Hierarchy {
@@ -24,7 +27,8 @@ public:
     }
     void process_hierarchy_query(HierarchyQuery*) override;
     void setup_job(Job*, const std::unordered_map<int, unsigned>&) override;
-
+    std::unordered_set<int> switch_ids_beyond_tors(std::unordered_set<int>)
+            override;
 private:
     Switch *core_switch;
     int core_switch_id;

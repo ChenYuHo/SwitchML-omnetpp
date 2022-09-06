@@ -16,10 +16,14 @@ simple ByteScheduler like ICollectiveScheduler
         input directin;
 }
 
-simple Fifo like ICollectiveScheduler
+simple FifoExclusive like ICollectiveScheduler
 {
-    parameters:
-        @class(Fifo_CS);
+    gates:
+        input directin;
+}
+
+simple ReadyAndGo like ICollectiveScheduler
+{
     gates:
         input directin;
 }

@@ -2,7 +2,7 @@
 #include <unordered_map>
 using namespace omnetpp;
 
-class Fifo_CS: public cSimpleModule {
+class ReadyAndGo: public cSimpleModule {
 private:
     std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> queue { };
 protected:
@@ -10,12 +10,12 @@ protected:
     virtual void handleMessage(cMessage *msg) override;
 };
 
-Define_Module(Fifo_CS);
+Define_Module(ReadyAndGo);
 
-void Fifo_CS::initialize() {
+void ReadyAndGo::initialize() {
 }
 
-void Fifo_CS::handleMessage(cMessage *msg) {
+void ReadyAndGo::handleMessage(cMessage *msg) {
     switch (msg->getKind()) {
     case 0: {
         // AllreduceRequest from TrainingProcess

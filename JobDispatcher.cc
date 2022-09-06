@@ -10,6 +10,23 @@ using namespace omnetpp;
 
 Define_Module(JobDispatcher);
 
+bool JobDispatcher::accommodate(unordered_set<uint64_t> existing_jids,
+        uint64_t jid_to_add) {
+    auto active_switch_ids = std::unordered_set<int> { };
+    for (auto jid : existing_jids) {
+        for (auto switch_id : switches_for_job[jid]) {
+            active_switch_ids.insert(switch_id);
+        }
+    }
+    for (auto switch_id: switches_for_job[jid_to_add]) {
+        if (active_switch_ids.find(switch_id) != active_switch_ids.end()) {
+            // found
+            return false;
+        }
+    }
+    return true;
+}
+
 void JobDispatcher::initialize() {
     switch_ports = getParentModule()->par("switch_ports");
     n_workers = getParentModule()->par("n_workers");
@@ -56,6 +73,20 @@ bool JobDispatcher::tryDispatchAJob() {
     if (placement.empty()) {
         // can't satisfy placement
         return false;
+    }
+
+    {
+        auto &workers = workers_for_job[job->getJob_id()];
+        auto &switches = switches_for_job[job->getJob_id()];
+        for (auto &pair : placement) {
+            workers.insert(pair.first);
+            auto tor_id = tor_id_for_worker[pair.first];
+            switches.insert(tor_id);
+        }
+        auto beyond_tor = hierarchy->switch_ids_beyond_tors(switches);
+        for (auto switch_id : beyond_tor) {
+            switches.insert(switch_id);
+        }
     }
 
     job->setNum_workers_allocated(placement.size());

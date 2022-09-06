@@ -3,12 +3,20 @@
 #include "SwitchML_m.h"
 #include <unordered_set>
 
-void TwoLayers::process_hierarchy_query(HierarchyQuery* q) {
+void TwoLayers::process_hierarchy_query(HierarchyQuery *q) {
     core_switch = (Switch*) q->getModules(2);
     core_switch_id = q->getPath(2);
 }
 
-void TwoLayers::setup_job(Job *job, const std::unordered_map<int, unsigned>& placement) {
+std::unordered_set<int> TwoLayers::switch_ids_beyond_tors(
+        std::unordered_set<int> tor_ids) {
+    return tor_ids.size() > 1 ?
+            std::unordered_set<int> { core_switch_id } :
+            std::unordered_set<int> { };
+}
+
+void TwoLayers::setup_job(Job *job,
+        const std::unordered_map<int, unsigned> &placement) {
     auto job_id = job->getJob_id();
     std::unordered_map<int, std::unordered_set<int>> wids_for_tor { };
     for (auto &pair : placement) {
@@ -27,13 +35,16 @@ void TwoLayers::setup_job(Job *job, const std::unordered_map<int, unsigned>& pla
         auto top_level = job->getNum_workers_allocated() == num_updates;
         setup->setJob_id(job_id);
         setup->setKind(6);
-        for (auto wid: wids) {
+        for (auto wid : wids) {
             setup->appendIds(wid);
         }
         setup->setTop_level(top_level);
-        job_dispatcher->sendDirect(setup, job_dispatcher->tors[tor_id], "directin");
-        EV_DEBUG << fmt::format("ToR {} should receive {} num_updates (toplevel {}) for job {}\n",
-                tor_id, num_updates, top_level, job_id);
+        job_dispatcher->sendDirect(setup, job_dispatcher->tors[tor_id],
+                "directin");
+        EV_DEBUG
+                        << fmt::format(
+                                "ToR {} should receive {} num_updates (toplevel {}) for job {}\n",
+                                tor_id, num_updates, top_level, job_id);
         setup_for_core->appendIds(tor_id);
     }
 
@@ -41,7 +52,9 @@ void TwoLayers::setup_job(Job *job, const std::unordered_map<int, unsigned>& pla
     setup_for_core->setTop_level(true);
     setup_for_core->setKind(6);
     job_dispatcher->sendDirect(setup_for_core, core_switch, "directin");
-    EV_DEBUG << fmt::format("Core {} should receive {} num_updates (toplevel {}) for job {}\n",
+    EV_DEBUG
+                    << fmt::format(
+                            "Core {} should receive {} num_updates (toplevel {}) for job {}\n",
                             core_switch_id, setup_for_core->getIdsArraySize(),
                             true, job_id);
 }
