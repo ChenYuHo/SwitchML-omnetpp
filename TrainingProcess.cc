@@ -7,7 +7,7 @@ Define_Module(TrainingProcess);
 void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size,
         uint64_t iter) {
     auto req = new CollectiveOperationRequest();
-    req->setKind(0);
+    req->setKind(1);
     req->setTraining_process_id(getId());
     req->setWorker_id(worker->getId());
     req->setModel(job->getModel());
@@ -20,16 +20,17 @@ void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size,
                             iter)));
     req->setJob_id(job->getJob_id());
     req->setNum_workers_allocated(job->getNum_workers_allocated());
-    if (collective_scheduler) {
-        EV_DEBUG << "Enqueue Allreduce" << endl;
-        sendDirect(req, collective_scheduler, "directin");
-    } else { // send directly to Worker
+//    if (collective_scheduler) {
+//        EV_DEBUG << "Enqueue Allreduce" << endl;
+//        getParentModule()->send(req, "cs_port$o");
+//    } else { // send directly to Worker
+
         EV_DEBUG
                         << fmt::format(
                                 "TrainingProcess start allreduce for job {} layer {} size {} iter {}\n",
                                 job->getJob_id(), layer, size, iter);
         sendDirect(req, getParentModule(), "directin");
-    }
+//    }
 }
 
 void TrainingProcess::process_ack(LayerAck *ack) {
@@ -102,7 +103,7 @@ void TrainingProcess::activity() {
     EV_DEBUG
                     << fmt::format("rank {} done job {} at {}\n", rank, jid,
                             simTime().raw());
-    job->setFinish_time(simTime());
+    job->setFinish_time(simTime().raw());
     job->setKind(5);
     sendDirect(job, getParentModule(), "directin");
     deleteModule();

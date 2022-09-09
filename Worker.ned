@@ -9,7 +9,8 @@ simple Worker
         @display("i=device/server");
     gates:
         inout port;
-        input jobin;
+        inout job_port;
+        inout cs_port;
         input directin;
 }
 

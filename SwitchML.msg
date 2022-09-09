@@ -38,7 +38,6 @@ message HierarchyQuery
     int path[];
     int from_id;
     int num_gpus;
-    cModule* modules[];
 }
 
 message Setup
@@ -65,9 +64,9 @@ message CollectiveOperationRequest
 
 message Job
 {
-    simtime_t submit_time = -1;
-    simtime_t start_time = -1;
-    simtime_t finish_time = -1;
+    int64_t submit_time = -1;
+    int64_t start_time = -1;
+    int64_t finish_time = -1;
     short model = 0;
     uint64_t job_id = 0;
     int worker_id = 0;

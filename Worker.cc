@@ -118,9 +118,9 @@ void Worker::handleMessage(cMessage *msg) {
         case 4: { // HierarchyQuery
             auto q = (HierarchyQuery*) msg;
             q->appendPath(getId());
-            q->appendModules(this);
             q->setNum_gpus(free_gpus);
             job_dispatcher = getSimulation()->getModule(q->getFrom_id());
+//            EV << fmt::format("Worker {}\n");
             sendDirect(q, out_gate->getPathEndGate()->getOwnerModule(),
                     "directin");
             break;
@@ -129,7 +129,7 @@ void Worker::handleMessage(cMessage *msg) {
             auto job = (Job*) msg;
             job->setWorker_id(getId());
             free_gpus += job->getGpu();
-            sendDirect(job, job_dispatcher, "directin");
+            send(job, "job_port$o");
             break;
         }
         default:
@@ -158,7 +158,7 @@ void Worker::handleMessage(cMessage *msg) {
                 ack->setCompleted(completed);
                 if (collective_scheduler) {
                     auto dup = ack->dup();
-                    sendDirect(dup, collective_scheduler, "directin");
+                    send(dup, "cs_port$o");
                 }
 
                 doing_collective_operation[p->getJob_id()] = false;

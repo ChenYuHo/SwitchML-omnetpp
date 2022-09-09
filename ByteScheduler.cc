@@ -26,7 +26,7 @@ void ByteScheduler::handleMessage(cMessage *msg) {
             for (auto req : requests) {
                 auto reducer = this->getSimulation()->getModule(
                         req->getWorker_id());
-                this->sendDirect(req, reducer, "directin");
+//                sendDirect(req, reducer, "directin");
             }
             queue.erase(request->getTensor_key());
         }

@@ -39,5 +39,6 @@ simple JobDispatcher
         string job_placement = default("random_multirack");
     gates:
         inout port;
+        inout worker_ports[];
         input directin;
 }

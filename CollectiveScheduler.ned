@@ -1,29 +1,29 @@
 moduleinterface ICollectiveScheduler
 {
     gates:
-        input directin;
+        inout worker_ports[];
 }
 
 simple Sincronia like ICollectiveScheduler
 {
     gates:
-        input directin;
+        inout worker_ports[];
 }
 
 simple ByteScheduler like ICollectiveScheduler
 {
     gates:
-        input directin;
+        inout worker_ports[];
 }
 
 simple FifoExclusive like ICollectiveScheduler
 {
     gates:
-        input directin;
+        inout worker_ports[];
 }
 
 simple ReadyAndGo like ICollectiveScheduler
 {
     gates:
-        input directin;
+        inout worker_ports[];
 }

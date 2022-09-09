@@ -4,7 +4,8 @@
 #include <unordered_set>
 
 void TwoLayers::process_hierarchy_query(HierarchyQuery *q) {
-    core_switch = (Switch*) q->getModules(2);
+    core_switch = (Switch*) job_dispatcher->getSimulation()->getModuleByPath(
+            "core");
     core_switch_id = q->getPath(2);
 }
 
@@ -39,8 +40,8 @@ void TwoLayers::setup_job(Job *job,
             setup->appendIds(wid);
         }
         setup->setTop_level(top_level);
-        job_dispatcher->sendDirect(setup, job_dispatcher->tors[tor_id],
-                "directin");
+//        job_dispatcher->sendDirect(setup, job_dispatcher->tors[tor_id],
+//                "directin");
         EV_DEBUG
                         << fmt::format(
                                 "ToR {} should receive {} num_updates (toplevel {}) for job {}\n",
@@ -51,7 +52,7 @@ void TwoLayers::setup_job(Job *job,
     setup_for_core->setJob_id(job_id);
     setup_for_core->setTop_level(true);
     setup_for_core->setKind(6);
-    job_dispatcher->sendDirect(setup_for_core, core_switch, "directin");
+//    job_dispatcher->sendDirect(setup_for_core, core_switch, "directin");
     EV_DEBUG
                     << fmt::format(
                             "Core {} should receive {} num_updates (toplevel {}) for job {}\n",

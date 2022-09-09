@@ -12,6 +12,7 @@ class Worker: public cSimpleModule {
 public:
     ~Worker();
 private:
+    friend TrainingProcess;
     cModuleType *srvProcType;
     unsigned free_gpus { 0 };
     std::unordered_map<uint32_t, std::unordered_set<uint32_t>> received_pkts { };

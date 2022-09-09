@@ -6,7 +6,7 @@ import ned.DelayChannel;
 network TwoLayers
 {
     parameters:
-        int switch_ports = default(16);
+        int switch_ports;
         int n_workers = switch_ports*(switch_ports-1);
     types:
         channelinterface IMyChannel
@@ -37,20 +37,28 @@ network TwoLayers
                 test_tensor_size = default(100);
         }
         job_submitter: <default("CSVJobSubmitter")> like IJobSubmitter;
-        job_dispatcher: JobDispatcher;
-        collective_scheduler: <default("Sincronia")> like ICollectiveScheduler if typename!="None";
+        job_dispatcher: JobDispatcher {
+            gates:
+                worker_ports[parent.n_workers];
+        }
+        collective_scheduler: <default("Sincronia")> like ICollectiveScheduler if typename!="None" {
+            gates:
+                worker_ports[parent.n_workers];
+        }
     connections allowunconnected:
         // ToR to Core
         for i=0..switch_ports-1 {
-            tors[i].up_ports[0] <--> tor_queues_up[i].inside;
+            tors[i].up_ports[0] <--> {  delay = 1ns; } <--> tor_queues_up[i].inside;
             tor_queues_up[i].outside <--> tor_core_channel: <default("Datarate")> like IMyChannel <--> core_queues_down[i].outside;
-            core_queues_down[i].inside <--> core.down_ports[i];
+            core_queues_down[i].inside <--> {  delay = 1ns; } <--> core.down_ports[i];
         }
         // Worker to ToR
         for i=0..n_workers-1 {
-            workers[i].port <--> worker_queues_up[i].inside;
+            workers[i].port <--> {  delay = 1ns; } <--> worker_queues_up[i].inside;
             worker_queues_up[i].outside <--> tor_worker_channel: <default("Datarate")> like IMyChannel <--> tor_queues_down[i].outside;
-            tor_queues_down[i].inside <--> tors[int(i/(switch_ports-1))].down_ports[i%(switch_ports-1)];
+            tor_queues_down[i].inside <--> {  delay = 1ns; } <--> tors[int(i/(switch_ports-1))].down_ports[i%(switch_ports-1)];
+            job_dispatcher.worker_ports[i] <--> { delay = 1ns; } <--> workers[i].job_port;
+            collective_scheduler.worker_ports[i] <--> { delay = 1ns; } <--> workers[i].cs_port if exists(collective_scheduler);
         }
         job_submitter.port <--> job_dispatcher.port;
 }

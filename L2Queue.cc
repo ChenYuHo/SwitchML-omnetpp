@@ -58,16 +58,15 @@ void L2Queue::handleMessage(cMessage *msg) {
             startTransmitting(msg);
         }
     } else if (msg->arrivedOn("outside$i")) {
+        if (msg->getKind() == 5) msg->setKind(4);
         // pass up
         send(msg, "inside$o");
     } else if (msg->getKind() == 4) { // Worker queue get from Worker, send to Switch queue
         msg->setKind(5);
-        sendDirect(msg, gate("outside$o")->getPathEndGate()->getOwnerModule(),
-                "directin");
+        send(msg, "outside$o");
     } else if (msg->getKind() == 5) { // Switch queue get from Worker queue, send to Switch
         msg->setKind(4);
-        sendDirect(msg, gate("inside$o")->getPathEndGate()->getOwnerModule(),
-                "directin");
+        send(msg, "inside$o");
     } else {  // arrived on gate "inside$i"
         if (endTransmissionEvent->isScheduled()) {
             // We are currently busy, so just queue up the packet.

@@ -10,7 +10,8 @@ using namespace omnetpp;
 
 Define_Module(JobDispatcher);
 
-bool JobDispatcher::accommodate(unordered_map<uint64_t, unsigned> num_workers_of_active_job_id,
+bool JobDispatcher::accommodate(
+        unordered_map<uint64_t, unsigned> num_workers_of_active_job_id,
         uint64_t jid_to_add) {
     auto active_switch_ids = std::unordered_set<int> { };
     for (auto &pair : num_workers_of_active_job_id) {
@@ -19,7 +20,7 @@ bool JobDispatcher::accommodate(unordered_map<uint64_t, unsigned> num_workers_of
             active_switch_ids.insert(switch_id);
         }
     }
-    for (auto switch_id: switches_for_job[jid_to_add]) {
+    for (auto switch_id : switches_for_job[jid_to_add]) {
         if (active_switch_ids.find(switch_id) != active_switch_ids.end()) {
             // found
             return false;
@@ -36,7 +37,7 @@ bool JobDispatcher::accommodate(unordered_set<uint64_t> existing_jids,
             active_switch_ids.insert(switch_id);
         }
     }
-    for (auto switch_id: switches_for_job[jid_to_add]) {
+    for (auto switch_id : switches_for_job[jid_to_add]) {
         if (active_switch_ids.find(switch_id) != active_switch_ids.end()) {
             // found
             return false;
@@ -46,14 +47,19 @@ bool JobDispatcher::accommodate(unordered_set<uint64_t> existing_jids,
 }
 
 void JobDispatcher::initialize() {
+    EV_DEBUG << "INIT\n";
+    cout << "INITc\n";
     switch_ports = getParentModule()->par("switch_ports");
     n_workers = getParentModule()->par("n_workers");
     for (unsigned i = 0; i < n_workers; ++i) {
         auto msg = new HierarchyQuery;
         msg->setKind(4);
         msg->setFrom_id(getId());
-        sendDirect(msg, getSimulation()->getModuleByPath(fmt::format("workers[{}]", i).c_str()),
-                "directin");
+        auto worker = (Worker*)gate("worker_ports$o", i)->getPathEndGate()->getOwnerModule();
+        workers[worker->getId()] = worker;
+        ports[worker->getId()] = i;
+        send(msg, "worker_ports$o", i);
+        cout << fmt::format("worker {} port {}\n", worker->getId(), i);
     }
     std::string h = par("hierarchy");
     if (h == "two_layers") {
@@ -114,7 +120,7 @@ bool JobDispatcher::tryDispatchAJob() {
         }
         if (workers.size() == 1) {
             emit(jpSignal, 1); // single machine
-        } else if (workers.size() > 1 && switches.size() == 1) {// distributed
+        } else if (workers.size() > 1 && switches.size() == 1) { // distributed
             emit(jpSignal, 2);
         } else { // workers.size() > 1 && switches.size() > 1 {// multi-rack
             emit(jpSignal, 3);
@@ -122,9 +128,9 @@ bool JobDispatcher::tryDispatchAJob() {
     }
 
     job->setNum_workers_allocated(placement.size());
-    job->setStart_time(simTime());
+    job->setStart_time(simTime().raw());
     emit(jstSignal, simTime());
-    emit(jwtSignal, simTime() - job->getSubmit_time());
+    emit(jwtSignal, simTime() - SimTime().setRaw(job->getSubmit_time()));
     unsigned rank = 0;
     hierarchy->setup_job(job, placement);
     for (auto pair : placement) {
@@ -137,7 +143,7 @@ bool JobDispatcher::tryDispatchAJob() {
         // local copy job uses kind as number of workers that finished the job
         dup->setGpu(gpus);
         dup->setRank(rank++);
-        sendDirect(dup, workers[wid], "directin");
+        send(dup, "worker_ports$o", ports[wid]);
     }
     return true;
 }
@@ -148,9 +154,10 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         auto q = (HierarchyQuery*) msg;
         tor_id_for_worker[q->getPath(0)] = q->getPath(1);
         free_gpus[q->getPath(0)] = q->getNum_gpus();
-        workers[q->getPath(0)] = (Worker*) q->getModules(0);
-        tors[q->getPath(1)] = (Switch*) q->getModules(1);
+        tors[q->getPath(1)] = (Switch*) getSimulation()->getModule(
+                q->getPath(1));
         hierarchy->process_hierarchy_query(q);
+        EV_DEBUG << fmt::format("core {} -> tor {} -> worker {}\n", q->getPath(2), q->getPath(1), q->getPath(0));
         if (++n_query_results_received == n_workers) {
             send(msg, "port$o"); // notify job submitter to start
         } else {
@@ -165,7 +172,7 @@ void JobDispatcher::handleMessage(cMessage *msg) {
                         << simTime() << endl;
         jobs[job->getJob_id()] = job; // saved as a local copy, don't delete
         job->setKind(0); // use kind as number of workers that finished the job
-        emit(jsmtSignal, job->getSubmit_time());
+        emit(jsmtSignal, SimTime().setRaw(job->getSubmit_time()));
         while (tryDispatchAJob()) {
             // send jobs until nothing left or can be placed
         }
@@ -175,7 +182,8 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         local_copy->setKind(num_received);
         // worker sets kind using its id
         free_gpus[job->getWorker_id()] += job->getGpu();
-        if (uint32_t(local_copy->getKind()) == local_copy->getNum_workers_allocated()) {
+        if (uint32_t(local_copy->getKind())
+                == local_copy->getNum_workers_allocated()) {
             // all workers finished
             EV_DEBUG << "Finished job " << job->getJob_id() << " at "
                             << simTime() << endl;

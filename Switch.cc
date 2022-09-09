@@ -31,19 +31,15 @@ void Switch::handleMessage(cMessage *msg) {
             // HierarchyQuery
             auto q = (HierarchyQuery*) msg;
             q->appendPath(getId());
-            q->appendModules(this);
             auto num_up_ports = gateSize("up_ports");
             if (num_up_ports) {
                 for (int i = 0; i < num_up_ports; ++i) {
-                    sendDirect(q->dup(),
-                            gate("up_ports$o", i)->getPathEndGate()->getOwnerModule(),
-                            "directin");
+                    send(q->dup(), "up_ports$o", i);
                 }
                 delete q;
             } else {
                 // no up ports, send back to JobDispatcher
-                this->sendDirect(q,
-                        this->getSimulation()->getModule(q->getFrom_id()),
+                this->sendDirect(q, getSimulation()->getModule(q->getFrom_id()),
                         "directin");
             }
             break;
@@ -63,7 +59,7 @@ void Switch::handleMessage(cMessage *msg) {
         }
         default:
             EV_DEBUG
-                            << fmt::format("wrong message of kind from {}\n",
+                            << fmt::format("wrong message of kind {} from {}\n",
                                     msg->getKind(),
                                     msg->getSenderModule()->getName());
             delete msg;

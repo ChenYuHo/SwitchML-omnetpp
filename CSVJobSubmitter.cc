@@ -39,7 +39,7 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
         auto job_info = new Job;
         job_info->setGpu(num_gpu * gpu_scale_factor);
         job_info->setIters(iters);
-        job_info->setSubmit_time(SimTime(submit_time, SIMTIME_S));
+        job_info->setSubmit_time(SimTime(submit_time, SIMTIME_S).raw());
         if (m == "alexnet") {
             job_info->setModel(alexnet);
         } else if (m == "vgg11") {
@@ -81,7 +81,7 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
     for (auto job_info : jobs) {
         job_info->setJob_id(jid++);
         sendDelayed(job_info,
-                submit_all_when_start ? 0 : job_info->getSubmit_time(), "port$o"); // to job dispatcher
+                submit_all_when_start ? 0 : SimTime().setRaw(job_info->getSubmit_time()), "port$o"); // to job dispatcher
     }
 }
 
