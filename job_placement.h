@@ -38,12 +38,14 @@ public:
                     force_distributed), force_multi_racks(force_multi_racks) {
     }
 
-    template<typename T> std::vector<T> sample(std::vector<T> vec,
-            size_t size) {
-        std::vector<size_t> res_index(size);
-        auto max_size = vec.size();
-        for (size_t i = 0; i < max_size; ++i) {
-            size_t j = omnetpp::intuniform(rng, 0, i);
+    template<typename T> const std::vector<T> sample(const std::vector<T> &vec, int size) {
+        if (vec.size() == size_t(size)) {
+            return vec;
+        }
+        std::vector<int> res_index(size);
+        int max_size = vec.size();
+        for (int i = 0; i < max_size; ++i) {
+            int j = omnetpp::intuniform(rng, 0, i);
             if (j < size) {
                 if (i < size) {
                     res_index[i] = res_index[j];
@@ -70,7 +72,7 @@ public:
                 tors_with_available_machines.insert(
                         job_dispatcher->tor_id_for_worker[wid]);
             }
-            for (int i = 0; i < job_dispatcher->free_gpus[wid]; ++i)
+            for (unsigned i = 0; i < job_dispatcher->free_gpus[wid]; ++i)
                 candidates.push_back(wid);
         }
 
@@ -88,6 +90,13 @@ public:
         } while (must_place_multi_racks && !multi_racks_placement(selected));
         for (auto wid : selected) {
             counter[wid] += 1;
+        }
+        if (!getEnvir()->isLoggingEnabled()) {
+            EV_DEBUG << "\nPlacement:\n";
+            for (auto pair: counter) {
+                EV_DEBUG << pair.first << "->" << pair.second << " ";
+            }
+            EV_DEBUG << endl;
         }
         return counter;
     }

@@ -9,6 +9,8 @@
 using namespace omnetpp;
 
 class Worker: public cSimpleModule {
+public:
+    ~Worker();
 private:
     cModuleType *srvProcType;
     unsigned free_gpus { 0 };

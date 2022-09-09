@@ -54,7 +54,7 @@ void TrainingProcess::activity() {
                         << collective_scheduler->getFullName() << endl;
     } else
         EV_DEBUG << "No Collective Scheduler" << endl;
-    auto job = check_and_cast<Job*>(receive());
+    job = (Job*)(receive()); // from worker
     auto rank = job->getRank();
     auto jid = job->getJob_id();
     auto iters = job->getIters();
@@ -104,6 +104,8 @@ void TrainingProcess::activity() {
                             simTime().raw());
     job->setFinish_time(simTime());
     job->setKind(5);
-    this->sendDirect(job, getParentModule(), "directin");
+    sendDirect(job, getParentModule(), "directin");
     deleteModule();
 }
+
+TrainingProcess::~TrainingProcess() {}

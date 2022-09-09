@@ -13,10 +13,7 @@ protected:
 
 Define_Module(CSVJobSubmitter);
 
-void CSVJobSubmitter::initialize() {
-//    scheduleAt(simTime(), new cMessage);
-    scheduleAfter(SimTime(1, SIMTIME_PS), new cMessage); // wait for initial setup messages to finish
-}
+void CSVJobSubmitter::initialize() {}
 
 void CSVJobSubmitter::handleMessage(cMessage *msg) {
     delete msg;
@@ -84,7 +81,7 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
     for (auto job_info : jobs) {
         job_info->setJob_id(jid++);
         sendDelayed(job_info,
-                submit_all_when_start ? 0 : job_info->getSubmit_time(), "out");
+                submit_all_when_start ? 0 : job_info->getSubmit_time(), "port$o"); // to job dispatcher
     }
 }
 

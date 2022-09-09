@@ -76,8 +76,8 @@ constexpr uint64_t wu_times[num_models][max_layers+1] = {
         {0}
 };
 
-constexpr size_t n_layers(short model, size_t layer=1){
-    return model_sizes[model][layer-1] != 0 ? layer : n_layers(model, layer+1);
+constexpr size_t n_layers(short model, size_t layer=0){
+    return model_sizes[model][layer] == 0 ? layer : n_layers(model, layer+1);
 }
 
 constexpr uint64_t model_size(short m, size_t layer) {

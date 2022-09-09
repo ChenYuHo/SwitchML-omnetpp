@@ -6,7 +6,7 @@
 Define_Module(Switch);
 
 void Switch::initialize() {
-    for (unsigned i = 0; i < gateSize("down_ports"); ++i) {
+    for (int i = 0; i < gateSize("down_ports"); ++i) {
         auto g = gate("down_ports$o", i);
         auto id =
                 g->getPathEndGate()->getOwnerModule()->gate("outside$o")->getPathEndGate()->getOwnerModule()->gate(
@@ -34,7 +34,7 @@ void Switch::handleMessage(cMessage *msg) {
             q->appendModules(this);
             auto num_up_ports = gateSize("up_ports");
             if (num_up_ports) {
-                for (unsigned i = 0; i < num_up_ports; ++i) {
+                for (int i = 0; i < num_up_ports; ++i) {
                     sendDirect(q->dup(),
                             gate("up_ports$o", i)->getPathEndGate()->getOwnerModule(),
                             "directin");

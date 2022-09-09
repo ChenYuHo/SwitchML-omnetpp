@@ -1,32 +1,22 @@
 import ned.DatarateChannel;
+import ned.DelayChannel;
 
 
 
 network TwoLayers
 {
     parameters:
-        **.MTU = 1500;
-        **.num_updates = 256;
-        **.num_slots = 128;
-        int switch_ports = default(2);
+        int switch_ports = default(16);
         int n_workers = switch_ports*(switch_ports-1);
-        job_submitter.max_jobs_to_submit = 2;
-        collective_scheduler.typename = "None";
-        job_submitter.file = "60_job.csv";
     types:
         channelinterface IMyChannel
         {
         }
         channel Delay extends ned.DelayChannel like IMyChannel
         {
-            parameters:
-                delay = default(1us);
         }
         channel Datarate extends ned.DatarateChannel like IMyChannel
         {
-            parameters:
-                datarate = default(100Gbps);
-                delay = default(1us);
         }
     submodules:
         core_queues_down[switch_ports]: L2Queue;
@@ -62,5 +52,5 @@ network TwoLayers
             worker_queues_up[i].outside <--> tor_worker_channel: <default("Datarate")> like IMyChannel <--> tor_queues_down[i].outside;
             tor_queues_down[i].inside <--> tors[int(i/(switch_ports-1))].down_ports[i%(switch_ports-1)];
         }
-        job_submitter.out --> job_dispatcher.in;
+        job_submitter.port <--> job_dispatcher.port;
 }

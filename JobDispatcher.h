@@ -17,6 +17,7 @@ class JobDispatcher: public cSimpleModule {
 public:
     ~JobDispatcher();
     bool accommodate(unordered_set<uint64_t>, uint64_t);
+    bool accommodate(unordered_map<uint64_t, unsigned>, uint64_t);
 private:
     friend Random;
     friend TwoLayers;
@@ -24,6 +25,7 @@ private:
     JobScheduling *job_scheduling;
     JobPlacement *job_placement;
     unsigned n_workers;
+    unsigned n_query_results_received = 0;
     unsigned switch_ports;
     std::map<uint64_t, Job*> jobs { }; // jid->job
     std::unordered_map<uint64_t, std::unordered_set<int>> workers_for_job { };
@@ -36,6 +38,7 @@ private:
     simsignal_t jsmtSignal;
     simsignal_t jstSignal;
     simsignal_t jwtSignal;
+    simsignal_t jpSignal;
     bool tryDispatchAJob();
 
 protected:

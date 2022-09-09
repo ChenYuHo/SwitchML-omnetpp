@@ -109,7 +109,7 @@ void Worker::handleMessage(cMessage *msg) {
                                     ++num_jobs_given).c_str(), this);
             sendDirect(msg, mod, "directin");
             auto job = check_and_cast<Job*>(msg);
-            free_gpus += job->getGpu();
+            free_gpus -= job->getGpu();
             training_process_for_job[job->getJob_id()] = (TrainingProcess*) mod;
             EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
                             << job->getJob_id() << endl;
@@ -128,6 +128,7 @@ void Worker::handleMessage(cMessage *msg) {
         case 5: { // finished job from TrainingProcess
             auto job = (Job*) msg;
             job->setWorker_id(getId());
+            free_gpus += job->getGpu();
             sendDirect(job, job_dispatcher, "directin");
             break;
         }
@@ -148,22 +149,21 @@ void Worker::handleMessage(cMessage *msg) {
             // cancel timer if retransmission is enabled
             if (set.size() == p->getNum_pkts_expected()) {
                 // allreduce done, notify allreducer
-                EV_DEBUG << fmt::format("Worker {} done allreduce\n", getId());
+                EV_DEBUG << fmt::format("Worker {} done a Collective Operation\n", getId());
                 auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
                 auto ack = new LayerAck();
+                ack->setKind(2);
                 ack->setLayer(p->getLayer());
                 ack->setJob_id(p->getJob_id());
                 ack->setCompleted(completed);
                 if (collective_scheduler) {
                     auto dup = ack->dup();
-                    dup->setKind(1);
                     sendDirect(dup, collective_scheduler, "directin");
                 }
 
                 doing_collective_operation[p->getJob_id()] = false;
                 if (completed) {
                     // after weight update, notify TrainingProcess this allreduce completes
-                    ack->setKind(2);
                     scheduleAfter(
                             SimTime(wu_time(p->getModel(), p->getLayer()),
                                     SIMTIME_PS), ack);
@@ -176,7 +176,6 @@ void Worker::handleMessage(cMessage *msg) {
                 set.clear();
                 received_pkts.erase(p->getTensor_key());
             } else {
-                EV_DEBUG << "Worker " << getId() << " " << __LINE__ << endl;
                 auto next_offset = p->getOffset() + num_slots * num_updates;
                 if (next_offset < p->getGrad_size()) {
                     sendNextPacket(p, next_offset);
@@ -187,3 +186,4 @@ void Worker::handleMessage(cMessage *msg) {
     }
 }
 
+Worker::~Worker() {}

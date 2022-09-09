@@ -8,12 +8,14 @@
 using namespace omnetpp;
 using namespace std;
 class Worker;
+class Job;
 
 /**
  * Dynamically launched process in the server; see NED file for more info
  */
 class TrainingProcess: public cSimpleModule {
 public:
+    ~TrainingProcess();
     TrainingProcess() :
             cSimpleModule(STACKSIZE) {
     }
@@ -31,6 +33,7 @@ private:
     void process_ack(LayerAck*);
     cModule *collective_scheduler;
     Worker *worker;
+    Job *job;
 };
 
 #endif /* TRAININGPROCESS_H_ */
