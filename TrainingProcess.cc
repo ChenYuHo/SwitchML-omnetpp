@@ -54,9 +54,10 @@ void TrainingProcess::activity() {
                         << collective_scheduler->getFullName() << endl;
     } else
         EV_DEBUG << "No Collective Scheduler" << endl;
-    job = (Job*)(receive()); // from worker
+    job = (Job*) (receive()); // from worker
     auto rank = job->getRank();
     auto jid = job->getJob_id();
+    auto wid = worker->getId();
     auto iters = job->getIters();
 
     auto model = job->getModel();
@@ -66,8 +67,9 @@ void TrainingProcess::activity() {
     can_do_fp.resize(num_layers, true);
     EV_DEBUG
                     << fmt::format(
-                            "Start Job {} as rank {} iters {} num_layers {}",
-                            jid, rank, iters, num_layers) << endl;
+                            "Start {}Job {} as rank {} iters {} num_layers {}",
+                            distributed ? "distributed " : "", jid, rank, iters,
+                            num_layers) << endl;
     cQueue AckQueue(fmt::format("Allreducer{}", getId()).c_str());
 
     for (unsigned iter = 0; iter < iters; ++iter) {
@@ -77,14 +79,25 @@ void TrainingProcess::activity() {
             }
             waitAndProcessAck(SimTime(fp_times[model][layer], SIMTIME_PS),
                     &AckQueue);
+            EV_DEBUG
+                            << fmt::format(
+                                    "Worker {} Job {} iter {} done fp layer {}\n",
+                                    wid, jid, iter, layer);
             can_do_fp[layer] = false;
         }
 
         for (int layer = num_layers - 1; layer >= 0; --layer) {
             waitAndProcessAck(SimTime(bp_times[model][layer], SIMTIME_PS),
                     &AckQueue);
+            EV_DEBUG
+                            << fmt::format(
+                                    "Worker {} Job {} iter {} done bp layer {}\n",
+                                    wid, jid, iter, layer);
             if (distributed) {
-                allreduce(job, layer, model_sizes[model][layer], iter);
+                allreduce(job, layer,
+                        model_sizes[model][layer] < 0 ?
+                                worker->par("test_tensor_size") :
+                                model_sizes[model][layer], iter);
             } else {
                 auto ack = new LayerAck();
                 ack->setLayer(layer);
@@ -99,13 +112,13 @@ void TrainingProcess::activity() {
         }
     }
 
-    EV_DEBUG
-                    << fmt::format("rank {} done job {} at {}\n", rank, jid,
-                            simTime().raw());
+    EV_DEBUG << "rank " << rank << " done job " << jid << " at " << simTime()
+                    << endl;
     job->setFinish_time(simTime());
     job->setKind(5);
     sendDirect(job, getParentModule(), "directin");
     deleteModule();
 }
 
-TrainingProcess::~TrainingProcess() {}
+TrainingProcess::~TrainingProcess() {
+}

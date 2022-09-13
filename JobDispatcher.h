@@ -31,7 +31,7 @@ private:
     std::unordered_map<uint64_t, std::unordered_set<int>> workers_for_job { };
     std::unordered_map<uint64_t, std::unordered_set<int>> switches_for_job { };
     std::unordered_map<int, Worker*> workers { };
-    std::unordered_map<int, Switch*> tors { };
+//    std::unordered_map<int, Switch*> tors { };
     std::unordered_map<int, int> tor_id_for_worker { };
     std::unordered_map<int, unsigned> free_gpus { }; // worker id -> free gpus
     simsignal_t jctSignal;
@@ -41,9 +41,11 @@ private:
     simsignal_t jpSignal;
     bool tryDispatchAJob();
 
-protected:
-    virtual void initialize() override;
-    virtual void handleMessage(cMessage *msg) override;
+    void initialize(int) override;
+    void handleMessage(cMessage *msg) override;
+    int numInitStages() const override {
+        return 2;
+    }
 };
 
 #endif /* JOBDISPATCHER_H_ */

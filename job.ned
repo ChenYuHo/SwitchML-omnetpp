@@ -6,7 +6,8 @@ moduleinterface IJobSubmitter
         int gpu_scale_factor;
         bool submit_all_when_start;
     gates:
-        inout port;
+        input directin;
+        output jobout;
 }
 
 simple CSVJobSubmitter like IJobSubmitter
@@ -18,7 +19,8 @@ simple CSVJobSubmitter like IJobSubmitter
         string file = default("60_job.csv");
         bool submit_all_when_start = default(false);
     gates:
-        inout port;
+        input directin;
+        output jobout;
 }
 
 simple JobDispatcher
@@ -36,8 +38,8 @@ simple JobDispatcher
         @statistic[jp](source=jobPlacementType; record=histogram,vector);
         string hierarchy = default("two_layers");
         string job_scheduling = default("fifo");
-        string job_placement = default("random_multirack");
+        string job_placement = default("random_multiracks");
     gates:
-        inout port;
+        input jobin;
         input directin;
 }

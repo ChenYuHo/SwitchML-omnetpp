@@ -7,6 +7,8 @@
 using namespace omnetpp;
 class Worker;
 class Switch: public cSimpleModule {
+public:
+    ~Switch();
 protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;
@@ -19,6 +21,12 @@ private:
     std::unordered_map<unsigned, bool> top_level_for_job { };
     std::unordered_map<unsigned, std::unordered_set<int>> gate_ids_for_job { };
     void multicast_downward(SwitchMLPacket*);
+    std::unordered_map<int, cMessage *> endTransmissionEvents { };
+    std::unordered_map<int, cChannel *> channels { };
+    std::unordered_map<int, bool> port_isBusy { };
+    std::unordered_map<int, cQueue> queues { };
+    void try_send(cPacket *, int);
+    void startTransmitting(cMessage *, int);
 };
 
 #endif /* SWITCH_H_ */

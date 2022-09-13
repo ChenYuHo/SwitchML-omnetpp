@@ -3,7 +3,6 @@
 #include <omnetpp.h>
 #include <unordered_map>
 #include <unordered_set>
-#include "Switch.h"
 #include "SwitchML_m.h"
 #include "TrainingProcess.h"
 using namespace omnetpp;
@@ -11,9 +10,12 @@ using namespace omnetpp;
 class Worker: public cSimpleModule {
 public:
     ~Worker();
+    int tor_id() {
+        return ToR->getId();
+    };
 private:
+    cModule *ToR;
     cModuleType *srvProcType;
-    unsigned free_gpus { 0 };
     std::unordered_map<uint32_t, std::unordered_set<uint32_t>> received_pkts { };
     cGate *out_gate;
     void sendNextPacket(SwitchMLPacket*, uint32_t);
@@ -27,6 +29,12 @@ private:
     std::unordered_map<uint64_t, bool> doing_collective_operation { };
     void startOneCollectiveOperation(uint64_t);
     int64_t MTU;
+    cMessage *endTransmissionEvent;
+    bool isBusy;
+    void startTransmitting(cMessage*);
+    void try_send(cPacket*);
+    cQueue queue;
+    cChannel *channel;
 protected:
     virtual void initialize() override;
     virtual void handleMessage(cMessage *msg) override;

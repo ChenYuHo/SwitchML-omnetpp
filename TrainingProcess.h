@@ -28,7 +28,6 @@ private:
     std::vector<simtime_t> weight_update_time;
     std::vector<uint64_t> model;
     std::hash<std::string> hasher { };
-    uint64_t n_workers;
     void waitAndProcessAck(simtime_t, cQueue*);
     void process_ack(LayerAck*);
     cModule *collective_scheduler;

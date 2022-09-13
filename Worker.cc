@@ -11,19 +11,30 @@ void Worker::initialize() {
     num_updates = par("num_updates");
     if (MTU && !num_updates) {
         num_updates = (MTU - (8 + 14 + 20 + 8 + 16 + 4 + 12)) / 4;
-    } else if (num_updates) {
+    } else if (!MTU && num_updates) {
         MTU = 8 + 14 + 20 + 8 + 16 + num_updates * 4 + 4 + 12;
-    } else {
+    } else if (!MTU && !num_updates) {
         MTU = 1500;
         num_updates = 256;
+    } else {
+        if (8 + 14 + 20 + 8 + 16 + num_updates * 4 + 4 + 12 > uint64_t(MTU)) {
+            EV_WARN
+                           << fmt::format(
+                                   "num_updates {} cannot fit into MTU {}\n",
+                                   num_updates, MTU);
+        }
     }
     num_slots = par("num_slots");
-    free_gpus = par("num_gpus");
     srvProcType = cModuleType::get("TrainingProcess");
     out_gate = gate("port$o");
+    ToR = out_gate->getPathEndGate()->getOwnerModule();
 
     collective_scheduler = getSimulation()->findModuleByPath(
             "<root>.collective_scheduler");
+    endTransmissionEvent = new cMessage("endTxEvent", 1);
+    channel = out_gate->findTransmissionChannel();
+    isBusy = false;
+    job_dispatcher = getParentModule()->getSubmodule("job_dispatcher");
 }
 
 void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
@@ -32,8 +43,27 @@ void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
     p->setVer(1 - pkt->getVer());
     p->setOffset(next_offset);
     p->setUpward(true);
-    send(p, out_gate);
+    try_send(p);
     // caller should delete pkt
+}
+
+void Worker::try_send(cPacket *pkt) {
+    if (endTransmissionEvent->isScheduled()) {
+        // We are currently busy, so just queue up the packet.
+        pkt->setTimestamp();
+        queue.insert(pkt);
+    } else {
+        // We are idle, so we can start transmitting right away.
+        startTransmitting(pkt);
+    }
+}
+
+void Worker::startTransmitting(cMessage *pkt) {
+    isBusy = true;
+    send(pkt, out_gate);
+    simtime_t endTransmission =
+            channel ? channel->getTransmissionFinishTime() : simTime();
+    scheduleAt(endTransmission, endTransmissionEvent);
 }
 
 void Worker::startOneCollectiveOperation(uint64_t job_id) {
@@ -71,7 +101,7 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
         p->setChunk_id(m->getChunk_id());
         p->setModel(m->getModel());
         p->setUpward(true);
-        send(p, out_gate);
+        try_send(p);
     }
     delete m;
 }
@@ -94,6 +124,14 @@ void Worker::handleMessage(cMessage *msg) {
             }
             break;
         }
+        case 1: {
+            // Transmission finished, we can start next one.
+            isBusy = false;
+            if (!queue.isEmpty()) {
+                startTransmitting((cMessage*) queue.pop());
+            }
+            break;
+        }
         case 2: {
             // LayerAck from self, direct to TrainingProcess
             auto ack = (LayerAck*) msg;
@@ -109,26 +147,14 @@ void Worker::handleMessage(cMessage *msg) {
                                     ++num_jobs_given).c_str(), this);
             sendDirect(msg, mod, "directin");
             auto job = check_and_cast<Job*>(msg);
-            free_gpus -= job->getGpu();
             training_process_for_job[job->getJob_id()] = (TrainingProcess*) mod;
             EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
                             << job->getJob_id() << endl;
             break;
         }
-        case 4: { // HierarchyQuery
-            auto q = (HierarchyQuery*) msg;
-            q->appendPath(getId());
-            q->appendModules(this);
-            q->setNum_gpus(free_gpus);
-            job_dispatcher = getSimulation()->getModule(q->getFrom_id());
-            sendDirect(q, out_gate->getPathEndGate()->getOwnerModule(),
-                    "directin");
-            break;
-        }
         case 5: { // finished job from TrainingProcess
             auto job = (Job*) msg;
             job->setWorker_id(getId());
-            free_gpus += job->getGpu();
             sendDirect(job, job_dispatcher, "directin");
             break;
         }
@@ -137,53 +163,74 @@ void Worker::handleMessage(cMessage *msg) {
             EV_FATAL << "got unexpected message" << endl;
             break;
         }
+        return;
+    }
 
+    auto p = (SwitchMLPacket*) (msg);
+    EV_DEBUG << "Worker " << getId() << " get packet slot " << p->getSlot()
+                    << " at " << simTime() << endl;
+    auto &set = received_pkts[p->getTensor_key()];
+    if (set.find(p->getOffset()) != set.end()) {
+        // duplicate
+        EV_DEBUG << "Worker " << getId() << " got duplicate packet.\n";
     } else {
-        auto p = (SwitchMLPacket*) (msg);
-        auto &set = received_pkts[p->getTensor_key()];
-        if (set.find(p->getOffset()) != set.end()) {
-            // duplicate
-            EV_DEBUG << "Worker " << getId() << " got duplicate packet.\n";
+        set.insert(p->getOffset());
+        EV_DEBUG
+                        << fmt::format(
+                                "Worker {} done slot {} offset {} pkt {}/{}\n",
+                                getId(), p->getSlot(), p->getOffset(),
+                                set.size(), p->getNum_pkts_expected());
+        // cancel timer if retransmission is enabled
+        if (set.size() == p->getNum_pkts_expected()) {
+            // allreduce done, notify allreducer
+            EV_DEBUG
+                            << fmt::format(
+                                    "Worker {} done a Collective Operation\n",
+                                    getId());
+            auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
+            auto ack = new LayerAck();
+            ack->setKind(2);
+            ack->setLayer(p->getLayer());
+            ack->setJob_id(p->getJob_id());
+            ack->setCompleted(completed);
+            if (collective_scheduler) {
+                auto dup = ack->dup();
+                sendDirect(dup, collective_scheduler, "directin");
+            }
+
+            doing_collective_operation[p->getJob_id()] = false;
+            if (completed) {
+                // after weight update, notify TrainingProcess this allreduce completes
+                scheduleAfter(
+                        SimTime(wu_time(p->getModel(), p->getLayer()),
+                                SIMTIME_PS), ack);
+                EV_DEBUG
+                                << fmt::format(
+                                        "Worker {} Job {} done aggregation layer {}\n",
+                                        getId(), p->getJob_id(), p->getLayer());
+            }
+            if (!collective_operation_requests_for_job[p->getJob_id()].isEmpty()) {
+                startOneCollectiveOperation(p->getJob_id());
+            }
+
+            // can't clear yet if loss recovery is enabled
+            set.clear();
+            received_pkts.erase(p->getTensor_key());
         } else {
-            set.insert(p->getOffset());
-            // cancel timer if retransmission is enabled
-            if (set.size() == p->getNum_pkts_expected()) {
-                // allreduce done, notify allreducer
-                EV_DEBUG << fmt::format("Worker {} done a Collective Operation\n", getId());
-                auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
-                auto ack = new LayerAck();
-                ack->setKind(2);
-                ack->setLayer(p->getLayer());
-                ack->setJob_id(p->getJob_id());
-                ack->setCompleted(completed);
-                if (collective_scheduler) {
-                    auto dup = ack->dup();
-                    sendDirect(dup, collective_scheduler, "directin");
-                }
-
-                doing_collective_operation[p->getJob_id()] = false;
-                if (completed) {
-                    // after weight update, notify TrainingProcess this allreduce completes
-                    scheduleAfter(
-                            SimTime(wu_time(p->getModel(), p->getLayer()),
-                                    SIMTIME_PS), ack);
-                }
-                if (!collective_operation_requests_for_job[p->getJob_id()].isEmpty()) {
-                    startOneCollectiveOperation(p->getJob_id());
-                }
-
-                // can't clear yet if loss recovery is enabled
-                set.clear();
-                received_pkts.erase(p->getTensor_key());
-            } else {
-                auto next_offset = p->getOffset() + num_slots * num_updates;
-                if (next_offset < p->getGrad_size()) {
-                    sendNextPacket(p, next_offset);
-                }
+            auto next_offset = p->getOffset() + num_slots * num_updates;
+            if (next_offset < p->getGrad_size()) {
+                EV_DEBUG
+                                << fmt::format(
+                                        "Worker {} Job {} layer {} send next offset {}\n",
+                                        getId(), p->getJob_id(), p->getLayer(),
+                                        next_offset);
+                sendNextPacket(p, next_offset);
             }
         }
-        delete p;
     }
+    delete p;
 }
 
-Worker::~Worker() {}
+Worker::~Worker() {
+    cancelAndDelete(endTransmissionEvent);
+}

@@ -3,9 +3,10 @@
 #include "SwitchML_m.h"
 #include <unordered_set>
 
-void TwoLayers::process_hierarchy_query(HierarchyQuery *q) {
-    core_switch = (Switch*) q->getModules(2);
-    core_switch_id = q->getPath(2);
+TwoLayers::TwoLayers(JobDispatcher *job_dispatcher) :
+        job_dispatcher(job_dispatcher) {
+    core_switch_id = job_dispatcher->getParentModule()->findSubmodule("core");
+    core_switch = job_dispatcher->getSimulation()->getModule(core_switch_id);
 }
 
 std::unordered_set<int> TwoLayers::switch_ids_beyond_tors(
@@ -28,7 +29,6 @@ void TwoLayers::setup_job(Job *job,
 
     for (auto &pair : wids_for_tor) {
         auto tor_id = pair.first;
-
         auto &wids = pair.second;
         auto setup = new Setup;
         auto num_updates = wids.size();
@@ -39,13 +39,19 @@ void TwoLayers::setup_job(Job *job,
             setup->appendIds(wid);
         }
         setup->setTop_level(top_level);
-        job_dispatcher->sendDirect(setup, job_dispatcher->tors[tor_id],
-                "directin");
+        job_dispatcher->sendDirect(setup,
+                job_dispatcher->getSimulation()->getModule(tor_id), "directin");
         EV_DEBUG
                         << fmt::format(
                                 "ToR {} should receive {} num_updates (toplevel {}) for job {}\n",
                                 tor_id, num_updates, top_level, job_id);
         setup_for_core->appendIds(tor_id);
+    }
+
+    if (wids_for_tor.size() == 1) {
+        // no need to involve core switch
+        delete setup_for_core;
+        return;
     }
 
     setup_for_core->setJob_id(job_id);

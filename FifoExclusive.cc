@@ -10,7 +10,6 @@ public:
     ~FifoExclusive();
 private:
     std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> requests_of_key { };
-    bool busy;
     std::queue<uint64_t> queue { };
     JobDispatcher *job_dispatcher;
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { };
