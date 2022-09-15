@@ -3,6 +3,7 @@
 #include "ModelStats.h"
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
+#include "JobDispatcher.h"
 using namespace omnetpp;
 Define_Module(Worker);
 
@@ -12,7 +13,7 @@ void Worker::initialize() {
     if (MTU && !num_updates) {
         num_updates = (MTU - (8 + 14 + 20 + 8 + 16 + 4 + 12)) / 4;
     } else if (!MTU && num_updates) {
-        MTU = 8 + 14 + 20 + 8 + 16 + num_updates * 4 + 4 + 12;
+        MTU = int64_t(8 + 14 + 20 + 8 + 16 + num_updates * 4 + 4 + 12);
     } else if (!MTU && !num_updates) {
         MTU = 1500;
         num_updates = 256;
@@ -146,7 +147,7 @@ void Worker::handleMessage(cMessage *msg) {
                             fmt::format("Worker{}_Job{}", getId(),
                                     ++num_jobs_given).c_str(), this);
             sendDirect(msg, mod, "directin");
-            auto job = check_and_cast<Job*>(msg);
+            auto job = (Job*) (msg);
             training_process_for_job[job->getJob_id()] = (TrainingProcess*) mod;
             EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
                             << job->getJob_id() << endl;
@@ -154,8 +155,12 @@ void Worker::handleMessage(cMessage *msg) {
         }
         case 5: { // finished job from TrainingProcess
             auto job = (Job*) msg;
+            auto jid = job->getJob_id();
             job->setWorker_id(getId());
             sendDirect(job, job_dispatcher, "directin");
+            training_process_for_job.erase(jid);
+            collective_operation_requests_for_job.erase(jid);
+            doing_collective_operation.erase(jid);
             break;
         }
         default:
@@ -189,33 +194,39 @@ void Worker::handleMessage(cMessage *msg) {
                                     getId());
             auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
             auto ack = new LayerAck();
+            auto jid = p->getJob_id();
             ack->setKind(2);
             ack->setLayer(p->getLayer());
-            ack->setJob_id(p->getJob_id());
+            ack->setJob_id(jid);
+            ack->setTensor_key(p->getTensor_key());
             ack->setCompleted(completed);
             if (collective_scheduler) {
                 auto dup = ack->dup();
                 sendDirect(dup, collective_scheduler, "directin");
             }
 
-            doing_collective_operation[p->getJob_id()] = false;
+            doing_collective_operation[jid] = false;
             if (completed) {
                 // after weight update, notify TrainingProcess this allreduce completes
                 scheduleAfter(
-                        SimTime(wu_time(p->getModel(), p->getLayer()),
+                        SimTime(int64_t(wu_time(p->getModel(), p->getLayer())),
                                 SIMTIME_PS), ack);
                 EV_DEBUG
                                 << fmt::format(
                                         "Worker {} Job {} done aggregation layer {}\n",
-                                        getId(), p->getJob_id(), p->getLayer());
-            }
-            if (!collective_operation_requests_for_job[p->getJob_id()].isEmpty()) {
-                startOneCollectiveOperation(p->getJob_id());
+                                        getId(), jid, p->getLayer());
+            } else
+                delete ack;
+            if (!collective_operation_requests_for_job[jid].isEmpty()) {
+                startOneCollectiveOperation(jid);
             }
 
             // can't clear yet if loss recovery is enabled
             set.clear();
-            received_pkts.erase(p->getTensor_key());
+            auto tensor_key = p->getTensor_key();
+            received_pkts.erase(tensor_key);
+            ((JobDispatcher*) (job_dispatcher))->clean_resources_for_tensor_key(
+                    jid, tensor_key);
         } else {
             auto next_offset = p->getOffset() + num_slots * num_updates;
             if (next_offset < p->getGrad_size()) {

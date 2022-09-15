@@ -1,7 +1,6 @@
 #include "Switch.h"
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
-#include "Worker.h"
 
 Define_Module(Switch);
 
@@ -12,6 +11,7 @@ void Switch::initialize() {
         // use cPacket because gid is often larger than cMessage kind (short) can accommodate
         endTransmissionEvents[gid] = new cPacket("endTxEvent", 0, gid);
         channels[gid] = g->findTransmissionChannel();
+        upper_level_switch = (Switch*) g->getPathEndGate()->getOwnerModule();
     }
     for (int i = 0; i < gateSize("down_ports"); ++i) {
         auto g = gate("down_ports$o", i);
@@ -23,39 +23,50 @@ void Switch::initialize() {
     }
 }
 
-void Switch::try_send(cPacket *pkt, int gate_id) {
-    if (endTransmissionEvents[gate_id]->isScheduled()) {
+void Switch::clean_resources_for_tensor(uint64_t tensor_key) {
+    count_for_tensor_key.erase(tensor_key);
+    seen_for_tensor_key.erase(tensor_key);
+}
+
+void Switch::clean_resources_for_job(uint64_t jid) {
+    num_updates_for_job.erase(jid);
+    top_level_for_job.erase(jid);
+    gate_ids_for_job.erase(jid);
+}
+
+void Switch::try_send(cPacket *pkt, int gid) {
+    if (endTransmissionEvents[gid]->isScheduled()) {
         // We are currently busy, so just queue up the packet.
         pkt->setTimestamp();
-        queues[gate_id].insert(pkt);
+        queues[gid].insert(pkt);
 //        EV_DEBUG << "queued pkt slot " << ((SwitchMLPacket*) pkt)->getSlot()
 //                        << endl;
     } else {
         // We are idle, so we can start transmitting right away.
-        startTransmitting(pkt, gate_id);
+        startTransmitting(pkt, gid);
 //        EV_DEBUG << "start transmitting pkt slot "
 //                        << ((SwitchMLPacket*) pkt)->getSlot() << endl;
     }
 }
 
-void Switch::startTransmitting(cMessage *msg, int gate_id) {
-    port_isBusy[gate_id] = true;
-    send(msg, gate_id);
-    auto channel = channels[gate_id];
+void Switch::startTransmitting(cMessage *msg, int gid) {
+    port_isBusy[gid] = true;
+    send(msg, gid);
+    auto channel = channels[gid];
     simtime_t endTransmission =
             channel ? channel->getTransmissionFinishTime() : simTime();
-    scheduleAt(endTransmission, endTransmissionEvents[gate_id]);
+    scheduleAt(endTransmission, endTransmissionEvents[gid]);
     EV_DEBUG << "endTransmission scheduled at " << endTransmission << endl;
 }
 
 void Switch::multicast_downward(SwitchMLPacket *pkt) {
     EV_DEBUG << "Switch " << getId() << " multicast downward pkt job "
                     << pkt->getJob_id() << " gate ids: ";
-    for (auto gate_id : gate_ids_for_job[pkt->getJob_id()]) {
-        EV_DEBUG << gate_id << " ";
+    for (auto gid : gate_ids_for_job[pkt->getJob_id()]) {
+        EV_DEBUG << gid << " ";
         pkt->setUpward(false);
         pkt->setFrom_id(getId());
-        try_send(pkt->dup(), gate_id);
+        try_send(pkt->dup(), gid);
     }
     EV_DEBUG << endl;
 }
@@ -66,12 +77,12 @@ void Switch::handleMessage(cMessage *msg) {
         // Transmission finished, we can start next one.
         EV_DEBUG << "Transmission of gate " << pkt->getBitLength()
                         << " finished at " << simTime() << endl;
-        int gate_id = pkt->getBitLength();
-        auto &queue = queues[gate_id];
-        port_isBusy[gate_id] = false;
+        auto gid = int(pkt->getBitLength());
+        auto &queue = queues[gid];
+        port_isBusy[gid] = false;
         if (!queue.isEmpty()) {
-            EV_DEBUG << "Start next transmission of gate " << gate_id << endl;
-            startTransmitting((cMessage*) queue.pop(), gate_id);
+            EV_DEBUG << "Start next transmission of gate " << gid << endl;
+            startTransmitting((cMessage*) queue.pop(), gid);
         }
         return;
     }

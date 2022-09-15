@@ -16,9 +16,10 @@ constexpr short vgg11 = 7;
 constexpr short vgg16 = 8;
 constexpr short vgg19 = 9;
 constexpr short test = 10;
+constexpr short test_multilayer = 11;
 
 constexpr size_t max_layers = 38; // bert
-constexpr size_t num_models = 11;
+constexpr size_t num_models = 12;
 
 constexpr int64_t model_sizes[num_models][max_layers+1] = {
         {330688, 39891840, 16781312, 4097000},

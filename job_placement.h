@@ -13,12 +13,9 @@ class Random: public JobPlacement {
 private:
     cRNG *rng;
     JobDispatcher *job_dispatcher;
-    bool force_distributed;
-    bool force_multi_racks;
-    bool force_single_rack;
-    bool fall_back_to_random;
+    int placement_type;
     bool multi_racks_placement(const std::vector<int> &selected) {
-        std::unordered_set<int> placed_tors { };
+        std::unordered_set<unsigned> placed_tors;
         for (const auto wid : selected) {
             placed_tors.insert(job_dispatcher->tor_id_for_worker[wid]);
         }
@@ -33,24 +30,10 @@ private:
         return workers.size() > 1;
     }
 
-    bool single_rack_placement(const std::vector<int> &selected) {
-        std::unordered_set<int> placed_tors { };
-        std::unordered_set<int> workers { };
-        for (const auto wid : selected) {
-            placed_tors.insert(job_dispatcher->tor_id_for_worker[wid]);
-            workers.insert(wid);
-        }
-        return workers.size() > 1 && placed_tors.size() == 1;
-    }
-
 public:
-    Random(cRNG *rng, JobDispatcher *job_dispatcher, bool distributed = false,
-            bool multi_racks = false, bool fall_back = true) :
-            rng(rng), job_dispatcher(job_dispatcher), fall_back_to_random(
-                    fall_back) {
-        force_distributed = distributed && !multi_racks;
-        force_single_rack = !distributed && multi_racks;
-        force_multi_racks = distributed && multi_racks;
+    Random(cRNG *rng, JobDispatcher *job_dispatcher, int placement_type = 0) :
+            rng(rng), job_dispatcher(job_dispatcher), placement_type(
+                    placement_type) {
     }
 
     template<typename T> const std::vector<T> sample(const std::vector<T> &vec,
@@ -78,73 +61,107 @@ public:
 
     std::unordered_map<int, unsigned> place_job(const Job *job) override {
         std::vector<int> candidates;
+        std::vector<int> selected;
         std::unordered_map<int, unsigned> counter { };
-        unsigned available_machines = 0;
-        std::unordered_set<unsigned> tors_with_available_machines { };
-        std::unordered_map<int, unsigned> free_gpus_in_tor { };
-        for (auto &pair : job_dispatcher->workers) {
+        unsigned num_gpus_needed = job->getGpu();
+
+        for (const auto &pair : job_dispatcher->workers) {
             auto wid = pair.first;
-            if (job_dispatcher->free_gpus[wid] > 0) {
-                available_machines++;
-                auto tor_id = job_dispatcher->tor_id_for_worker[wid];
-                tors_with_available_machines.insert(tor_id);
-                free_gpus_in_tor[tor_id] += job_dispatcher->free_gpus[wid];
-            }
-            for (unsigned i = 0; i < job_dispatcher->free_gpus[wid]; ++i) {
+            for (unsigned i = 0; i < job_dispatcher->free_gpus[wid]; ++i)
                 candidates.push_back(wid);
-            }
         }
 
-        if (job->getGpu() > candidates.size()) {
+        if (num_gpus_needed > candidates.size()) {
             return counter; // not enough free GPUs
-        } else if (job->getGpu() == 1) {
+        }
+
+        if (num_gpus_needed == 1) {
             // just choose one, nothing more to do
-            for (auto wid : sample(candidates, 1)) {
-                counter[wid] += 1;
-            }
+            counter[candidates[omnetpp::intuniform(rng, 0,
+                    candidates.size() - 1)]] += 1;
             return counter;
         }
 
-        bool can_place_within_single_rack = false;
-        for (auto &pair : free_gpus_in_tor) {
-            if (pair.second >= job->getGpu()) {
-                can_place_within_single_rack = true;
-            }
-        }
-        bool can_place_distributed = available_machines > 1;
-        bool can_place_multi_racks = tors_with_available_machines.size() > 1;
-
-        bool can_satisfy_requirement = (force_single_rack
-                && can_place_within_single_rack)
-                || (force_distributed && can_place_distributed)
-                || (force_multi_racks && can_place_multi_racks);
-
-        if (!can_satisfy_requirement) {
-            if (!fall_back_to_random) {
-                return counter;
-            } else {
-                for (auto wid : sample(candidates, 1)) {
-                    counter[wid] += 1;
+        switch (placement_type) {
+        case 1: { // distributed
+            unsigned num_machines_with_free_gpus = 0;
+            for (const auto &pair : job_dispatcher->workers) {
+                auto wid = pair.first;
+                if (job_dispatcher->free_gpus[wid] > 0) {
+                    num_machines_with_free_gpus++;
                 }
-                return counter;
             }
+            if (num_machines_with_free_gpus > 1) { // must place distributed
+                do {
+                    selected = sample(candidates, num_gpus_needed);
+                } while (!distributed_placement(selected));
+            }
+            break;
+        }
+        case 2: { // single rack
+            std::unordered_map<int, unsigned> num_machines_with_free_gpus_in_tor { }; // tor_id -> free gpus
+            std::unordered_map<int, unsigned> free_gpus_in_tor { }; // tor_id -> free gpus
+            std::unordered_map<int, std::vector<int>> candidates_for_tor { };
+            for (const auto &pair : job_dispatcher->workers) {
+                auto wid = pair.first;
+                auto tor_id = job_dispatcher->tor_id_for_worker[wid];
+                auto worker_free_gpus = job_dispatcher->free_gpus[wid];
+                if (worker_free_gpus > 0) {
+                    num_machines_with_free_gpus_in_tor[tor_id] += 1;
+                    free_gpus_in_tor[tor_id] += worker_free_gpus;
+                }
+                for (unsigned i = 0; i < worker_free_gpus; ++i)
+                    candidates_for_tor[tor_id].push_back(wid);
+            }
+
+            // find if single rack (distributed) placement if possible
+            bool can_place_single_rack = false;
+            std::vector<int> tor_candidates;
+            for (const auto &pair : free_gpus_in_tor) {
+                if (pair.second > num_gpus_needed
+                        && num_machines_with_free_gpus_in_tor[pair.first] > 1) {
+                    can_place_single_rack = true;
+                    for (unsigned i = 0; i < pair.second; ++i) {
+                        tor_candidates.push_back(pair.first);
+                    }
+                }
+            }
+
+            if (can_place_single_rack) {
+                // choose rack
+                auto selected_tor = tor_candidates[omnetpp::intuniform(rng, 0,
+                        tor_candidates.size() - 1)];
+                const auto &candidate_workers = candidates_for_tor[selected_tor];
+                do {
+                    selected = sample(candidate_workers, num_gpus_needed);
+                } while (!distributed_placement(selected));
+            }
+            break;
+        }
+        case 3: {
+            unsigned num_machines_with_free_gpus = 0;
+            std::unordered_set<int> tors_with_available_machines { };
+            for (const auto &pair : job_dispatcher->workers) {
+                auto wid = pair.first;
+                if (job_dispatcher->free_gpus[wid] > 0) {
+                    num_machines_with_free_gpus++;
+                    tors_with_available_machines.insert(
+                            job_dispatcher->tor_id_for_worker[wid]);
+                }
+            }
+            if (tors_with_available_machines.size() > 1) { // must place multirack
+                do {
+                    selected = sample(candidates, num_gpus_needed);
+                } while (!multi_racks_placement(selected));
+            }
+            break;
+        }
+        case 0:
+        default:
+            selected = sample(candidates, num_gpus_needed);
+            break;
         }
 
-        // at this point, must satisfy one of the three requirements
-        std::vector<int> selected;
-        if (force_single_rack) {
-            do {
-                selected = sample(candidates, job->getGpu());
-            } while (!single_rack_placement(selected));
-        } else if (force_distributed) {
-            do {
-                selected = sample(candidates, job->getGpu());
-            } while (!distributed_placement(selected));
-        } else if (force_multi_racks) {
-            do {
-                selected = sample(candidates, job->getGpu());
-            } while (!multi_racks_placement(selected));
-        }
         for (auto wid : selected) {
             counter[wid] += 1;
         }
@@ -157,7 +174,6 @@ public:
         }
         return counter;
     }
-}
-;
+};
 
 #endif /* JOB_PLACEMENT_H_ */

@@ -8,10 +8,11 @@ using namespace omnetpp;
 class Worker;
 class Switch: public cSimpleModule {
 public:
-    ~Switch();
-protected:
-    virtual void initialize() override;
-    virtual void handleMessage(cMessage *msg) override;
+    void clean_resources_for_tensor(uint64_t);
+    void clean_resources_for_job(uint64_t);
+    ~Switch() override;
+    void initialize() override;
+    void handleMessage(cMessage *msg) override;
 private:
     std::unordered_map<int, int> gate_id { }; // switch or worker id -> gate id
     std::unordered_map<uint64_t, std::unordered_map<std::string, unsigned>> count_for_tensor_key { }; // jid, hash
@@ -20,13 +21,14 @@ private:
     std::unordered_map<unsigned, unsigned> num_updates_for_job { };
     std::unordered_map<unsigned, bool> top_level_for_job { };
     std::unordered_map<unsigned, std::unordered_set<int>> gate_ids_for_job { };
-    void multicast_downward(SwitchMLPacket*);
-    std::unordered_map<int, cMessage *> endTransmissionEvents { };
-    std::unordered_map<int, cChannel *> channels { };
+    std::unordered_map<int, cMessage*> endTransmissionEvents { }; // gate id -> message
+    std::unordered_map<int, cChannel*> channels { }; // gate id -> channel
     std::unordered_map<int, bool> port_isBusy { };
     std::unordered_map<int, cQueue> queues { };
-    void try_send(cPacket *, int);
-    void startTransmitting(cMessage *, int);
+    void multicast_downward(SwitchMLPacket*);
+    void try_send(cPacket*, int);
+    void startTransmitting(cMessage*, int);
+    Switch *upper_level_switch;
 };
 
 #endif /* SWITCH_H_ */

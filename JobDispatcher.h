@@ -16,15 +16,17 @@ class TwoLayers;
 class JobDispatcher: public cSimpleModule {
 public:
     ~JobDispatcher();
-    bool accommodate(unordered_set<uint64_t>, uint64_t);
-    bool accommodate(unordered_map<uint64_t, unsigned>, uint64_t);
+    bool accommodate(const unordered_set<uint64_t>&, uint64_t);
+    bool accommodate(const unordered_map<uint64_t, unsigned>&, uint64_t);
+    void clean_resources_for_tensor_key(uint64_t, uint64_t);
 private:
     friend Random;
     friend TwoLayers;
     Hierarchy *hierarchy;
     JobScheduling *job_scheduling;
     JobPlacement *job_placement;
-    unsigned n_workers;
+    cModule *collective_scheduler;
+    int n_workers;
     unsigned n_query_results_received = 0;
     unsigned switch_ports;
     std::map<uint64_t, Job*> jobs { }; // jid->job

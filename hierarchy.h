@@ -6,7 +6,6 @@
 #include <unordered_set>
 #include <omnetpp.h>
 
-class cModule;
 class JobDispatcher;
 class HierarchyQuery;
 class Job;

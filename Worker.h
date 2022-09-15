@@ -9,10 +9,11 @@ using namespace omnetpp;
 
 class Worker: public cSimpleModule {
 public:
-    ~Worker();
+    ~Worker() override;
     int tor_id() {
         return ToR->getId();
-    };
+    }
+    ;
 private:
     cModule *ToR;
     cModuleType *srvProcType;
@@ -35,9 +36,8 @@ private:
     void try_send(cPacket*);
     cQueue queue;
     cChannel *channel;
-protected:
-    virtual void initialize() override;
-    virtual void handleMessage(cMessage *msg) override;
+    void initialize() override;
+    void handleMessage(cMessage *msg) override;
 };
 
 #endif /* WORKER_H_ */

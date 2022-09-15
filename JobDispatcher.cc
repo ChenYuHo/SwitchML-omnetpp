@@ -5,6 +5,7 @@
 #include "hierarchy.h"
 #include "job_scheduling.h"
 #include "job_placement.h"
+#include "Switch.h"
 
 using namespace omnetpp;
 
@@ -12,6 +13,8 @@ Define_Module(JobDispatcher);
 
 void JobDispatcher::initialize(int stage) {
     if (stage == 0) {
+        collective_scheduler = getSimulation()->findModuleByPath(
+                "<root>.collective_scheduler");
         switch_ports = getParentModule()->par("switch_ports");
         n_workers = getParentModule()->par("n_workers");
         std::string h = par("hierarchy");
@@ -30,13 +33,13 @@ void JobDispatcher::initialize(int stage) {
 
         std::string p = par("job_placement");
         if (p == "random") {
-            job_placement = new Random(getRNG(0), this, false, false, true);
-        } else if (p == "random_distributed") {
-            job_placement = new Random(getRNG(0), this, true, false, false);
+            job_placement = new Random(getRNG(0), this, 0);
+        } else if (p == "random_distributed") { // single or multi rack
+            job_placement = new Random(getRNG(0), this, 1);
         } else if (p == "random_singlerack") {
-            job_placement = new Random(getRNG(0), this, false, true, false);
+            job_placement = new Random(getRNG(0), this, 2);
         } else if (p == "random_multiracks") {
-            job_placement = new Random(getRNG(0), this, true, true, false);
+            job_placement = new Random(getRNG(0), this, 3);
         } else {
             EV_FATAL << "Unexpected Job Placement: " << p << endl;
         }
@@ -47,7 +50,7 @@ void JobDispatcher::initialize(int stage) {
         jwtSignal = registerSignal("jobWaitTime");
         jpSignal = registerSignal("jobPlacementType");
     } else if (stage == 1) {
-        for (unsigned i = 0; i < n_workers; ++i) {
+        for (int i = 0; i < n_workers; ++i) {
             auto wid = getParentModule()->findSubmodule("workers", i);
             auto worker = (Worker*) getSimulation()->getModule(wid);
             tor_id_for_worker[wid] = worker->tor_id();
@@ -60,8 +63,16 @@ void JobDispatcher::initialize(int stage) {
 
 }
 
+void JobDispatcher::clean_resources_for_tensor_key(uint64_t jid,
+        uint64_t tensor_key) {
+    for (auto tor_id : switches_for_job[jid]) {
+        ((Switch*) (getSimulation()->getModule(tor_id)))->clean_resources_for_tensor(
+                tensor_key);
+    }
+}
+
 bool JobDispatcher::accommodate(
-        unordered_map<uint64_t, unsigned> num_workers_of_active_job_id,
+        const unordered_map<uint64_t, unsigned> &num_workers_of_active_job_id,
         uint64_t jid_to_add) {
     auto active_switch_ids = std::unordered_set<int> { };
     for (auto &pair : num_workers_of_active_job_id) {
@@ -79,7 +90,7 @@ bool JobDispatcher::accommodate(
     return true;
 }
 
-bool JobDispatcher::accommodate(unordered_set<uint64_t> existing_jids,
+bool JobDispatcher::accommodate(const unordered_set<uint64_t> &existing_jids,
         uint64_t jid_to_add) {
     auto active_switch_ids = std::unordered_set<int> { };
     for (auto jid : existing_jids) {
@@ -110,10 +121,10 @@ bool JobDispatcher::tryDispatchAJob() {
     }
 
     {
-        auto &workers = workers_for_job[job->getJob_id()];
+        auto &workers_of_job = workers_for_job[job->getJob_id()];
         auto &switches = switches_for_job[job->getJob_id()];
         for (auto &pair : placement) {
-            workers.insert(pair.first);
+            workers_of_job.insert(pair.first);
             auto tor_id = tor_id_for_worker[pair.first];
             switches.insert(tor_id);
         }
@@ -121,11 +132,11 @@ bool JobDispatcher::tryDispatchAJob() {
         for (auto switch_id : beyond_tor) {
             switches.insert(switch_id);
         }
-        if (workers.size() == 1) {
+        if (workers_of_job.size() == 1) {
             emit(jpSignal, 1); // single machine
-        } else if (workers.size() > 1 && switches.size() == 1) { // distributed
+        } else if (workers_of_job.size() > 1 && switches.size() == 1) { // distributed single-rack
             emit(jpSignal, 2);
-        } else { // workers.size() > 1 && switches.size() > 1 {// multi-racks
+        } else { // workers_of_job.size() > 1 && switches.size() > 1 {// distrubted multi-racks
             emit(jpSignal, 3);
         }
     }
@@ -165,7 +176,7 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         }
     } else { // a worker reports a finished job
         auto local_copy = jobs[job->getJob_id()];
-        auto num_received = local_copy->getKind() + 1;
+        short num_received = local_copy->getKind() + 1;
         local_copy->setKind(num_received);
         // worker sets kind using its id
         free_gpus[job->getWorker_id()] += job->getGpu();
@@ -175,9 +186,18 @@ void JobDispatcher::handleMessage(cMessage *msg) {
             EV_DEBUG << "Finished job " << job->getJob_id() << " at "
                             << simTime() << endl;
             emit(jctSignal, simTime());
+
+            auto jid = job->getJob_id();
+            for (auto tor_id : switches_for_job[jid]) {
+                ((Switch*) (getSimulation()->getModule(tor_id)))->clean_resources_for_job(
+                        jid);
+            }
+            if (collective_scheduler)
+                sendDirect(job->dup(), collective_scheduler, "directin");
+
             delete local_copy;
-            jobs.erase(job->getJob_id());
-            //TODO: clean up job related resources
+            jobs.erase(jid);
+
             while (tryDispatchAJob()) {
                 // send jobs until nothing left or nothing can be placed
             }

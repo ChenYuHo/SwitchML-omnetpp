@@ -6,14 +6,14 @@ using namespace omnetpp;
 
 class CSVJobSubmitter: public cSimpleModule {
 private:
-protected:
-    virtual void initialize() override;
-    virtual void handleMessage(cMessage *msg) override;
+    void initialize() override;
+    void handleMessage(cMessage *msg) override;
 };
 
 Define_Module(CSVJobSubmitter);
 
-void CSVJobSubmitter::initialize() {}
+void CSVJobSubmitter::initialize() {
+}
 
 void CSVJobSubmitter::handleMessage(cMessage *msg) {
     delete msg;
@@ -81,7 +81,8 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
     for (auto job_info : jobs) {
         job_info->setJob_id(jid++);
         sendDelayed(job_info,
-                submit_all_when_start ? 0 : job_info->getSubmit_time(), "jobout"); // to job dispatcher
+                submit_all_when_start ? 0 : job_info->getSubmit_time(),
+                "jobout"); // to job dispatcher
     }
 }
 

@@ -2,12 +2,14 @@
 #include <unordered_map>
 using namespace omnetpp;
 
+/**
+ * No scheduling, only synchronize among workers
+ */
 class ReadyAndGo: public cSimpleModule {
 private:
     std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> queue { };
-protected:
-    virtual void initialize() override;
-    virtual void handleMessage(cMessage *msg) override;
+    void initialize() override;
+    void handleMessage(cMessage *msg) override;
 };
 
 Define_Module(ReadyAndGo);

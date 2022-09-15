@@ -7,19 +7,22 @@ using namespace omnetpp;
 
 class FifoExclusive: public cSimpleModule {
 public:
-    ~FifoExclusive();
+    ~FifoExclusive() override;
 private:
     std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> requests_of_key { };
     std::queue<uint64_t> queue { };
-    JobDispatcher *job_dispatcher;
+    JobDispatcher *job_dispatcher { };
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { };
     bool TryStartOneCollectiveOperation();
-protected:
-    virtual void initialize() override;
-    virtual void handleMessage(cMessage *msg) override;
+    void initialize() override;
+    void handleMessage(cMessage *msg) override;
 };
 
 Define_Module(FifoExclusive);
+
+void FifoExclusive::initialize() {
+    job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
+}
 
 bool FifoExclusive::TryStartOneCollectiveOperation() {
     if (queue.empty())
@@ -47,15 +50,11 @@ bool FifoExclusive::TryStartOneCollectiveOperation() {
         return false;
 }
 
-void FifoExclusive::initialize() {
-    job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
-}
-
 void FifoExclusive::handleMessage(cMessage *msg) {
     switch (msg->getKind()) {
     case 0: {
         // CollectiveOperationRequest from TrainingProcess
-        auto request = check_and_cast<CollectiveOperationRequest*>(msg);
+        auto request = (CollectiveOperationRequest*) (msg);
         auto &requests = requests_of_key[request->getTensor_key()];
         requests.push_back(request);
         if (requests.size() == request->getNum_workers_allocated()) {
@@ -86,6 +85,10 @@ void FifoExclusive::handleMessage(cMessage *msg) {
         delete msg;
         break;
     }
+    case 5: // finished job
+        num_workers_of_active_job_id.erase(((Job*) msg)->getJob_id());
+        delete msg;
+        break;
     default:
         delete msg;
         EV_FATAL << "got unexpected message" << endl;
@@ -94,5 +97,4 @@ void FifoExclusive::handleMessage(cMessage *msg) {
 
 }
 
-FifoExclusive::~FifoExclusive() {
-}
+FifoExclusive::~FifoExclusive() = default;

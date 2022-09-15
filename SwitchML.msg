@@ -30,6 +30,7 @@ message LayerAck
 {
     uint64_t layer;
     uint64_t job_id;
+    uint64_t tensor_key;
     bool completed;
 };
 

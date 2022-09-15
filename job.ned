@@ -39,6 +39,11 @@ simple JobDispatcher
         string hierarchy = default("two_layers");
         string job_scheduling = default("fifo");
         string job_placement = default("random_multiracks");
+        bool custom_model = default(false);
+        string custom_model_sizes = default("");
+        string custom_fp_times = default("");
+        string custom_bp_times = default("");
+        string custom_wu_times = default("");
     gates:
         input jobin;
         input directin;
