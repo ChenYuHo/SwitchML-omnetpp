@@ -8,7 +8,6 @@
 #include <queue>
 using namespace omnetpp;
 using namespace std;
-class Worker;
 class Job;
 
 /**
@@ -28,7 +27,7 @@ private:
     void waitAndProcessAck(simtime_t, cQueue*);
     void process_ack(LayerAck*);
     cModule *collective_scheduler;
-    Worker *worker;
+    cModule *worker;
     Job *job;
     void finish() override;
     simsignal_t idleTimeSignal;

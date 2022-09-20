@@ -1,5 +1,5 @@
-#ifndef TRAININGPROCESS_H_
-#define TRAININGPROCESS_H_
+#ifndef TRAININGPROCESS2_H_
+#define TRAININGPROCESS2_H_
 
 #include "SwitchML_m.h"
 #define FMT_HEADER_ONLY
@@ -53,4 +53,4 @@ private:
     std::vector<bool> layer_done { };
 };
 
-#endif /* TRAININGPROCESS_H_ */
+#endif /* TRAININGPROCESS2_H_ */

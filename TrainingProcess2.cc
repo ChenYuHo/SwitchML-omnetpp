@@ -148,6 +148,7 @@ void TrainingProcess2::handleMessage(cMessage *msg) {
             if (!can_do_fp[layer]) {
                 // waiting for communication, so idling
                 idle_start.push(simTime());
+                delete ins;
                 break;
             } else if (!idle_start.empty()) {
                 // record idle time
@@ -193,7 +194,7 @@ void TrainingProcess2::handleMessage(cMessage *msg) {
 //                                    << simTime() << endl;
                     allreduce(layer, ins->getIter());
                 } else {
-                    auto ack = new LayerAck();
+                    auto ack = new LayerAck("ack", 2);
                     ack->setLayer(layer);
                     scheduleAfter(wu_times[layer], ack);
 //                    EV_DEBUG << "start wu layer " << layer << " "
@@ -226,6 +227,7 @@ void TrainingProcess2::handleMessage(cMessage *msg) {
             ins->setIter(iter + 1);
             scheduleAt(simTime(), ins);
         }
+        delete msg;
         if (std::all_of(layer_done.cbegin(), layer_done.cend(), [](bool done) {
             return done;
         })) {
@@ -240,8 +242,6 @@ void TrainingProcess2::handleMessage(cMessage *msg) {
                 deleteModule();
             }
         }
-
-//        sendDirect(ack, training_process_for_job[ack->getJob_id()], "directin");
         break;
     }
     case 8: {

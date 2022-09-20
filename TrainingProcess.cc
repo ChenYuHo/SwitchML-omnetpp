@@ -1,6 +1,5 @@
 #include "TrainingProcess.h"
 #include "ModelStats.h"
-#include "Worker.h"
 #include <sstream>
 #include <vector>
 
@@ -74,7 +73,7 @@ void TrainingProcess::activity() {
             "<root>.collective_scheduler");
     auto job_dispatcher = getSimulation()->findModuleByPath(
             "<root>.job_dispatcher");
-    worker = (Worker*) getParentModule();
+    worker = getParentModule();
     if (collective_scheduler) {
         EV_DEBUG << "Collective Scheduler is "
                         << collective_scheduler->getFullName() << endl;

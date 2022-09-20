@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "SwitchML_m.h"
-#include "TrainingProcess.h"
+#include "TrainingProcess2.h"
 using namespace omnetpp;
 
 class Worker: public cSimpleModule {
@@ -22,7 +22,7 @@ private:
     void sendNextPacket(SwitchMLPacket*, uint32_t);
     uint64_t num_slots;
     uint64_t num_updates;
-    std::unordered_map<uint64_t, TrainingProcess*> training_process_for_job { };
+    std::unordered_map<uint64_t, TrainingProcess2*> training_process_for_job { };
     cModule *collective_scheduler;
     cModule *job_dispatcher;
     unsigned num_jobs_given { 0 };

@@ -148,7 +148,7 @@ void Worker::handleMessage(cMessage *msg) {
                                     ++num_jobs_given).c_str(), this);
             sendDirect(msg, mod, "directin");
             auto job = (Job*) (msg);
-            training_process_for_job[job->getJob_id()] = (TrainingProcess*) mod;
+            training_process_for_job[job->getJob_id()] = (TrainingProcess2*) mod;
             EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
                             << job->getJob_id() << endl;
             break;
