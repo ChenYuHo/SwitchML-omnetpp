@@ -5,16 +5,16 @@
 #include <queue>
 using namespace omnetpp;
 
-class ByteScheduler: public cSimpleModule {
+class Sincronia: public cSimpleModule {
 private:
     uint64_t chunk_size;
-    std::unordered_map<uint64_t, uint64_t> original_size { };
+    std::unordered_map<uint64_t, uint64_t> remaining_size { };
     std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> requests_of_key { };
     typedef std::pair<uint64_t, uint64_t> layer_tkey_pair;
     std::unordered_map<uint64_t,
             std::priority_queue<layer_tkey_pair, std::vector<layer_tkey_pair>,
                     std::greater<layer_tkey_pair>>> queues_for_job { };
-    std::unordered_map<uint64_t, bool> busy { };
+//    std::unordered_map<uint64_t, bool> busy { };
     JobDispatcher *job_dispatcher { };
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { };
     void StartOneCollectiveOperation(uint64_t);
@@ -22,50 +22,57 @@ private:
     void clean_resources_for_tensor(uint64_t);
     void initialize() override;
     void handleMessage(cMessage *msg) override;
+    void order_and_run();
+    double get_weight(uint64_t);
+    unsigned StartCollectiveOperations();
+    std::deque<uint64_t> pending_tensors { };
 };
 
-Define_Module(ByteScheduler);
+Define_Module(Sincronia);
 
-void ByteScheduler::initialize() {
+void Sincronia::initialize() {
     chunk_size = par("chunk_size");
     job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
 }
 
-void ByteScheduler::clean_resources_for_tensor(uint64_t tensor_key) {
+void Sincronia::clean_resources_for_tensor(uint64_t tensor_key) {
+    for (auto req : requests_of_key[tensor_key]) {
+        delete req;
+    }
     requests_of_key.erase(tensor_key);
-    original_size.erase(tensor_key);
+    remaining_size.erase(tensor_key);
 }
 
-void ByteScheduler::clean_resources_for_job(uint64_t jid) {
+void Sincronia::clean_resources_for_job(uint64_t jid) {
     queues_for_job.erase(jid);
-    busy.erase(jid);
+//    busy.erase(jid);
     num_workers_of_active_job_id.erase(jid);
 }
 
-void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
-    if (busy[jid]) {
-        EV_DEBUG << "Job " << jid << " is busy\n";
-        return;
-    }
-    auto &queue = queues_for_job[jid];
-    if (queue.empty()) {
-        EV_DEBUG << "Job " << jid << " empty queue\n";
-        return;
-    }
-    busy[jid] = true;
-    auto tensor_key = queue.top().second;
+void Sincronia::StartOneCollectiveOperation(uint64_t tensor_key) {
+//    if (busy[jid]) {
+//        EV_DEBUG << "Job " << jid << " is busy\n";
+//        return;
+//    }
+//    auto &queue = queues_for_job[jid];
+//    if (queue.empty()) {
+//        EV_DEBUG << "Job " << jid << " empty queue\n";
+//        return;
+//    }
+//    busy[jid] = true;
+//    auto tensor_key = queue.top().second;
     auto &requests = requests_of_key[tensor_key];
     auto next_chunk_id = requests[0]->getChunk_id() + 1;
     bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
     if (last_chunk) {
         for (auto req : requests) {
-            req->setSize(original_size[tensor_key] % chunk_size);
+            req->setSize(remaining_size[tensor_key]);
         }
     }
     for (auto req : requests) {
         EV_DEBUG
                         << fmt::format(
-                                "ByteScheduler notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
+                                "Sincronia notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
                                 req->getWorker_id(), req->getJob_id(),
                                 req->getLayer(), next_chunk_id,
                                 req->getNum_chunks(), req->getSize());
@@ -73,16 +80,65 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
                 "directin");
         req->setChunk_id(next_chunk_id);
     }
-    num_workers_of_active_job_id[jid] = requests.size();
-    if (last_chunk) {
-        for (auto req : requests) {
-            delete req;
-        }
-        queue.pop();
-    }
+//    num_workers_of_active_job_id[jid] = requests.size();
+//    if (last_chunk) {
+//
+//        remaining_size[tensor_key] = 0;
+//    } else {
+//        remaining_size[tensor_key] -= chunk_size;
+//    }
 }
 
-void ByteScheduler::handleMessage(cMessage *msg) {
+double Sincronia::get_weight(uint64_t tensor_key) {
+//    auto req = requests_of_key[tensor_key];
+    // remaining size
+    return double(remaining_size[tensor_key]);
+}
+
+unsigned Sincronia::StartCollectiveOperations() {
+    if (pending_tensors.empty())
+        return 0;
+
+    for (auto iterator = pending_tensors.begin();
+            iterator != pending_tensors.end();) {
+        auto tensor_key = *iterator;
+        auto &requests = requests_of_key[tensor_key];
+        auto jid_to_add = requests[0]->getJob_id();
+        if (job_dispatcher->accommodate(num_workers_of_active_job_id,
+                jid_to_add)) {
+            num_workers_of_active_job_id[jid_to_add] = requests.size();
+            iterator = pending_tensors.erase(iterator);
+        } else {
+            ++iterator;
+        }
+    }
+
+    // invoke
+
+}
+
+void Sincronia::order_and_run() {
+    if (!pending_tensors.empty())
+        return;
+    std::unordered_map<uint64_t, double> weights { }; // tensor_key -> weight
+    for (const auto &pair : queues_for_job) {
+        auto &pq = pair.second;
+        if (!pq.empty()) {
+//            weights[pq.top()] = get_weight(pq.top());
+        }
+    }
+    if (weights.empty())
+        return;
+    // bssi
+    if (weights.size() > 1) {
+        job_dispatcher->bssi(pending_tensors, weights);
+    } else {
+        pending_tensors.push_back(weights.begin()->first);
+    }
+    auto started = StartCollectiveOperations();
+}
+
+void Sincronia::handleMessage(cMessage *msg) {
     switch (msg->getKind()) {
     case 0: {
         // CollectiveOperationRequest from TrainingProcess
@@ -94,7 +150,7 @@ void ByteScheduler::handleMessage(cMessage *msg) {
         if (requests.size() == request->getNum_workers_allocated()) {
             auto tensor_key = request->getTensor_key();
             auto size = request->getSize();
-            original_size[tensor_key] = size;
+            remaining_size[tensor_key] = size;
             auto num_chunks = size / chunk_size + (size % chunk_size ? 1 : 0);
             for (auto req : requests) {
                 req->setSize(chunk_size);
@@ -108,14 +164,18 @@ void ByteScheduler::handleMessage(cMessage *msg) {
         }
         break;
     }
+    case 1:
+        // run loop
+        break;
     case 2: {
         // LayerAck from Worker, meaning a collective operation is done
         auto ack = (LayerAck*) msg;
         auto jid = ack->getJob_id();
         num_workers_of_active_job_id[jid] -= 1;
         if (num_workers_of_active_job_id[jid] == 0) {
-            EV_DEBUG << "[ByteScheduler] ]Job " << ack->getJob_id() << " layer " << ack->getLayer() << " done\n";
-            busy[jid] = false;
+            EV_DEBUG << "Job " << ack->getJob_id() << " layer "
+                            << ack->getLayer() << " done\n";
+//            busy[jid] = false;
             if (ack->getCompleted()) {
                 clean_resources_for_tensor(ack->getTensor_key());
             }

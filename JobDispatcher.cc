@@ -63,6 +63,71 @@ void JobDispatcher::initialize(int stage) {
 
 }
 
+struct DoubleDefaultedToOne {
+    double d = 1;
+};
+
+void JobDispatcher::bssi(std::deque<uint64_t> &result,
+        std::unordered_map<uint64_t, double> weights) {
+    for (const auto &pair : weights) {
+        result.push_back(pair.first);
+    }
+
+//    auto iters = weights.size();
+//    for (unsigned i = 0; i < iters - 1; ++i) {
+//        std::unordered_map<int, // worker id
+//                std::unordered_map<unsigned, DoubleDefaultedToOne>> data_port_coflow { };
+//        // port (per worker), coflow -> data
+//        std::vector<DoubleDefaultedToOne> data_port(n_workers);
+//        // Find the most bottlenecked port
+//        int bottlenecked; // wid
+//        double current_max = 0;
+//        for (auto &pair : weights) {
+//            auto tensor_key = pair.first;
+//            for (auto wid : workers_for_job[jid]) {
+//                auto data = double(
+//                        (CHUNK_SIZE == 0) ?
+//                                tensor->size :
+//                                std::min(tensor->size - tensor->allreduced_size,
+//                                        CHUNK_SIZE));
+//                data_port_coflow[wid][tensor->job->id].d += data;
+//                data_port[wid].d += data;
+//                if (data_port[wid].d >= current_max) {
+//                    current_max = data_port[wid].d;
+//                    bottlenecked = wid;
+//                }
+//            }
+//        }
+//        DVLOG(3) << "bottlenecked port " << bottlenecked;
+//        // Select weighted largest job to schedule last
+//        Tensor *weighted_largest;
+//        auto current_min = DBL_MAX;
+//        double min_weight;
+//        for (auto &pair : weights) {
+//            auto weight = pair.second
+//                    / data_port_coflow[bottlenecked][pair.first->job->id].d;
+//            if (weight <= current_min) {
+//                current_min = weight;
+//                weighted_largest = pair.first;
+//                min_weight = pair.second;
+//            }
+//        }
+//        result.push_front(weighted_largest->key);
+//
+//        // Scale the weights
+//        auto s = data_port_coflow[bottlenecked][weighted_largest->job->id].d;
+//        weights.erase(weighted_largest);
+//        for (auto &pair : weights) {
+//            pair.second -=
+//                    (min_weight
+//                            * data_port_coflow[bottlenecked][pair.first->job->id].d
+//                            / s);
+//        }
+//    }
+//    result.push_front(weights.begin()->first->key);
+
+}
+
 void JobDispatcher::clean_resources_for_tensor_key(uint64_t jid,
         uint64_t tensor_key) {
     for (auto tor_id : switches_for_job[jid]) {

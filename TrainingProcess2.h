@@ -2,7 +2,6 @@
 #define TRAININGPROCESS_H_
 
 #include "SwitchML_m.h"
-#define STACKSIZE    32768
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
 #include <queue>
@@ -14,29 +13,44 @@ class Job;
 /**
  * Dynamically launched process in the server; see NED file for more info
  */
-class TrainingProcess: public cSimpleModule {
+class TrainingProcess2: public cSimpleModule {
 public:
-    ~TrainingProcess();
-    TrainingProcess() :
-            cSimpleModule(STACKSIZE) {
-    }
-    void activity() override;
+    ~TrainingProcess2();
 private:
     std::vector<bool> can_do_fp { };
-    void allreduce(Job*, uint64_t, uint64_t, uint64_t);
+    void allreduce(uint64_t, uint64_t);
     std::hash<std::string> hasher { };
     void waitAndProcessAck(simtime_t, cQueue*);
     void process_ack(LayerAck*);
     cModule *collective_scheduler;
-    Worker *worker;
+    cModule *job_dispatcher;
+    cModule *worker;
     Job *job;
+    uint64_t rank;
+    uint64_t jid;
+    int wid;
+    uint64_t iters;
+    uint64_t iter = 0;
+//    short model;
+    bool distributed;
     void finish() override;
     simsignal_t idleTimeSignal;
     simsignal_t iterTimeSignal;
     simsignal_t commTimeSignal;
     std::queue<simtime_t> iter_start;
+    std::queue<simtime_t> idle_start;
+    std::queue<simtime_t> comm_start;
     unsigned count = 0;
     size_t num_layers;
+
+    void initialize() override;
+    void handleMessage(cMessage *msg) override;
+
+    std::vector<int64_t> model { };
+    std::vector<simtime_t> fp_times { };
+    std::vector<simtime_t> bp_times { };
+    std::vector<simtime_t> wu_times { };
+    std::vector<bool> layer_done { };
 };
 
 #endif /* TRAININGPROCESS_H_ */

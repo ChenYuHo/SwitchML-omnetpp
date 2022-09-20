@@ -35,7 +35,16 @@ void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size,
 }
 
 void TrainingProcess::process_ack(LayerAck *ack) {
-    can_do_fp[ack->getLayer()] = true;
+    if (ack->getKind() == 8) { // partial complete (a chunk)
+
+    } else {
+        can_do_fp[ack->getLayer()] = true;
+        if (++count == num_layers) { // this iter finishes
+            count = 0;
+//            emit(iterTimeSignal, simTime() - iter_start.front());
+            iter_start.pop();
+        }
+    }
     delete ack;
 }
 
@@ -57,6 +66,9 @@ std::vector<uint64_t> split(const char *s, char delim = ',') {
 }
 
 void TrainingProcess::activity() {
+    iterTimeSignal = registerSignal("iterTime");
+    idleTimeSignal = registerSignal("idleTime");
+    commTimeSignal = registerSignal("commTime");
     // retrieve parameters
     collective_scheduler = getSimulation()->findModuleByPath(
             "<root>.collective_scheduler");
@@ -75,7 +87,7 @@ void TrainingProcess::activity() {
     auto iters = job->getIters();
 
     auto model = job->getModel();
-    auto num_layers = n_layers(model);
+    num_layers = n_layers(model);
     bool distributed = job->getNum_workers_allocated() > 1;
     cQueue AckQueue(fmt::format("Allreducer{}", getId()).c_str());
 
@@ -84,7 +96,6 @@ void TrainingProcess::activity() {
                 job_dispatcher->par("custom_model_sizes").stringValue());
         auto custom_fp_times = split(
                 job_dispatcher->par("custom_fp_times").stringValue());
-        custom_fp_times.resize(num_layers);
         auto custom_bp_times = split(
                 job_dispatcher->par("custom_bp_times").stringValue());
         auto custom_wu_times = split(
@@ -104,6 +115,9 @@ void TrainingProcess::activity() {
                 while (!can_do_fp[layer]) {
                     process_ack((LayerAck*) (receive()));
                 }
+                if (layer == 0) {
+                    iter_start.push(simTime());
+                }
                 waitAndProcessAck(SimTime(custom_fp_times[layer], SIMTIME_PS),
                         &AckQueue);
                 EV_DEBUG
@@ -121,6 +135,9 @@ void TrainingProcess::activity() {
                                         "Worker {} Job {} iter {} done bp layer {}\n",
                                         wid, jid, iter, layer);
                 if (distributed) {
+//                    if (layer == num_layers - 1) {
+//
+//                    }
                     allreduce(job, layer, custom_model_sizes[layer], iter);
                 } else {
                     auto ack = new LayerAck();
@@ -142,6 +159,9 @@ void TrainingProcess::activity() {
             for (size_t layer = 0; layer < num_layers; ++layer) {
                 while (!can_do_fp[layer]) {
                     process_ack((LayerAck*) (receive()));
+                }
+                if (layer == 0) {
+                    iter_start.push(simTime());
                 }
                 waitAndProcessAck(SimTime(fp_times[model][layer], SIMTIME_PS),
                         &AckQueue);
@@ -189,7 +209,6 @@ void TrainingProcess::activity() {
 }
 
 void TrainingProcess::finish() {
-    EV << getStackUsage() << " bytes of stack used\n";
 }
 
 TrainingProcess::~TrainingProcess() {

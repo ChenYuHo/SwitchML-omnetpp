@@ -26,7 +26,7 @@ void Worker::initialize() {
         }
     }
     num_slots = par("num_slots");
-    srvProcType = cModuleType::get("TrainingProcess");
+    srvProcType = cModuleType::get("TrainingProcess2");
     out_gate = gate("port$o");
     ToR = out_gate->getPathEndGate()->getOwnerModule();
 
@@ -193,7 +193,7 @@ void Worker::handleMessage(cMessage *msg) {
                                     "Worker {} done a Collective Operation\n",
                                     getId());
             auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
-            auto ack = new LayerAck();
+            auto ack = new LayerAck;
             auto jid = p->getJob_id();
             ack->setKind(2);
             ack->setLayer(p->getLayer());
@@ -207,7 +207,7 @@ void Worker::handleMessage(cMessage *msg) {
 
             doing_collective_operation[jid] = false;
             if (completed) {
-                // after weight update, notify TrainingProcess this allreduce completes
+                // after weight update, notify TrainingProcess this collective completed
                 scheduleAfter(
                         SimTime(int64_t(wu_time(p->getModel(), p->getLayer())),
                                 SIMTIME_PS), ack);
@@ -215,8 +215,10 @@ void Worker::handleMessage(cMessage *msg) {
                                 << fmt::format(
                                         "Worker {} Job {} done aggregation layer {}\n",
                                         getId(), jid, p->getLayer());
-            } else
-                delete ack;
+            } else {
+                ack->setKind(8);
+                sendDirect(ack, training_process_for_job[jid], "directin");
+            }
             if (!collective_operation_requests_for_job[jid].isEmpty()) {
                 startOneCollectiveOperation(jid);
             }

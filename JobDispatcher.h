@@ -4,6 +4,7 @@
 #include <omnetpp.h>
 #include <map>
 #include <unordered_map>
+#include <deque>
 #include "Worker.h"
 #include "Switch.h"
 using namespace omnetpp;
@@ -19,6 +20,7 @@ public:
     bool accommodate(const unordered_set<uint64_t>&, uint64_t);
     bool accommodate(const unordered_map<uint64_t, unsigned>&, uint64_t);
     void clean_resources_for_tensor_key(uint64_t, uint64_t);
+    void bssi(std::deque<uint64_t>&, std::unordered_map<uint64_t, double>);
 private:
     friend Random;
     friend TwoLayers;

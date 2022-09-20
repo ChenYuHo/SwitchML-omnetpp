@@ -77,3 +77,10 @@ message Job
     uint32_t num_workers_allocated = 2;
     uint64_t iters = 2;
 };
+
+message Instruction
+{
+	uint64_t layer;
+	bool fp;
+	uint64_t iter;
+}

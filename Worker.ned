@@ -15,6 +15,30 @@ simple Worker
 
 simple TrainingProcess
 {
+//    parameters:
+//        @signal[iterTime](type=simtime_t);
+//        @statistic[iterTime](source=iterTime; record=histogram,vector);
+//        
+//        @signal[idleTime](type=simtime_t);
+//        @statistic[idleTime](source=idleTime; record=histogram,vector);
+//        
+//        @signal[commTime](type=simtime_t);
+//        @statistic[commTime](source=commTime; record=histogram,vector);
+    gates:
+        input directin;
+}
+
+simple TrainingProcess2
+{
+//    parameters:
+//        @signal[iterTime](type=simtime_t);
+//        @statistic[iterTime](source=iterTime; record=histogram,vector);
+//        
+//        @signal[idleTime](type=simtime_t);
+//        @statistic[idleTime](source=idleTime; record=histogram,vector);
+//        
+//        @signal[commTime](type=simtime_t);
+//        @statistic[commTime](source=commTime; record=histogram,vector);
     gates:
         input directin;
 }
