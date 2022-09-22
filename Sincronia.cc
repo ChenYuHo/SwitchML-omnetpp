@@ -3,6 +3,8 @@
 #include "ModelStats.h"
 #include <unordered_map>
 #include <queue>
+#define FMT_HEADER_ONLY
+#include "fmt/format.h"
 using namespace omnetpp;
 
 class Sincronia: public cSimpleModule {

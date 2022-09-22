@@ -2,6 +2,8 @@
 #include "JobDispatcher.h"
 #include "SwitchML_m.h"
 #include <unordered_set>
+#define FMT_HEADER_ONLY
+#include "fmt/format.h"
 
 TwoLayers::TwoLayers(JobDispatcher *job_dispatcher) :
         job_dispatcher(job_dispatcher) {

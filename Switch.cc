@@ -128,6 +128,7 @@ void Switch::handleMessage(cMessage *msg) {
         } else {
             seen_key.insert(p->getFrom_id());
             seen[key_of_the_other_slot].erase(p->getFrom_id());
+//            std::cout << count[key] << " " << p->getN_workers() << " " << p->getJob_id() << " " << num_updates_for_job[p->getJob_id()] << std::endl;
             count[key] = ((count[key] + 1) % p->getN_workers())
                     % num_updates_for_job[p->getJob_id()];
             if (count[key] == 0) {

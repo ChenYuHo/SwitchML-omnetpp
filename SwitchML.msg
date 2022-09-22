@@ -80,7 +80,6 @@ message Job
 
 message Instruction
 {
-	uint64_t layer;
-	bool fp;
-	uint64_t iter;
+	uint64_t layer = 0;
+	uint64_t iter = 0;
 }

@@ -26,7 +26,7 @@ void Worker::initialize() {
         }
     }
     num_slots = par("num_slots");
-    srvProcType = cModuleType::get("TrainingProcess2");
+    srvProcType = cModuleType::get("TrainingProcess");
     out_gate = gate("port$o");
     ToR = out_gate->getPathEndGate()->getOwnerModule();
 
@@ -148,7 +148,7 @@ void Worker::handleMessage(cMessage *msg) {
                                     ++num_jobs_given).c_str(), this);
             sendDirect(msg, mod, "directin");
             auto job = (Job*) (msg);
-            training_process_for_job[job->getJob_id()] = (TrainingProcess2*) mod;
+            training_process_for_job[job->getJob_id()] = mod;
             EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
                             << job->getJob_id() << endl;
             break;
@@ -158,6 +158,7 @@ void Worker::handleMessage(cMessage *msg) {
             auto jid = job->getJob_id();
             job->setWorker_id(getId());
             sendDirect(job, job_dispatcher, "directin");
+            training_process_for_job[jid]->deleteModule();
             training_process_for_job.erase(jid);
             collective_operation_requests_for_job.erase(jid);
             doing_collective_operation.erase(jid);
@@ -208,9 +209,11 @@ void Worker::handleMessage(cMessage *msg) {
             doing_collective_operation[jid] = false;
             if (completed) {
                 // after weight update, notify TrainingProcess this collective completed
-                scheduleAfter(
-                        SimTime(int64_t(wu_time(p->getModel(), p->getLayer())),
-                                SIMTIME_PS), ack);
+
+//                scheduleAfter(
+//                        SimTime(int64_t(wu_time(p->getModel(), p->getLayer())),
+//                                SIMTIME_PS), ack);
+                sendDirect(ack, training_process_for_job[jid], "directin");
                 EV_DEBUG
                                 << fmt::format(
                                         "Worker {} Job {} done aggregation layer {}\n",

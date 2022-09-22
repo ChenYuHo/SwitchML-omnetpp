@@ -137,7 +137,7 @@ void JobDispatcher::clean_resources_for_tensor_key(uint64_t jid,
 }
 
 bool JobDispatcher::accommodate(
-        const unordered_map<uint64_t, unsigned> &num_workers_of_active_job_id,
+        const std::unordered_map<uint64_t, unsigned> &num_workers_of_active_job_id,
         uint64_t jid_to_add) {
     auto active_switch_ids = std::unordered_set<int> { };
     for (auto &pair : num_workers_of_active_job_id) {
@@ -155,7 +155,7 @@ bool JobDispatcher::accommodate(
     return true;
 }
 
-bool JobDispatcher::accommodate(const unordered_set<uint64_t> &existing_jids,
+bool JobDispatcher::accommodate(const std::unordered_set<uint64_t> &existing_jids,
         uint64_t jid_to_add) {
     auto active_switch_ids = std::unordered_set<int> { };
     for (auto jid : existing_jids) {

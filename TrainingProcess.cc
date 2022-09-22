@@ -5,8 +5,12 @@
 
 Define_Module(TrainingProcess);
 
-void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size,
-        uint64_t iter) {
+void TrainingProcess::initialize() {
+
+}
+
+void TrainingProcess::allreduce(uint64_t layer, uint64_t iter) {
+    auto size = model[layer];
     auto req = new CollectiveOperationRequest();
     req->setKind(0);
     req->setTraining_process_id(getId());
@@ -33,178 +37,220 @@ void TrainingProcess::allreduce(Job *job, uint64_t layer, uint64_t size,
     }
 }
 
-void TrainingProcess::process_ack(LayerAck *ack) {
-    if (ack->getKind() == 8) { // partial complete (a chunk)
-
-    } else {
-        can_do_fp[ack->getLayer()] = true;
-        if (++count == num_layers) { // this iter finishes
-            count = 0;
-//            emit(iterTimeSignal, simTime() - iter_start.front());
-            iter_start.pop();
-        }
-    }
-    delete ack;
-}
-
-void TrainingProcess::waitAndProcessAck(simtime_t wait_time, cQueue *AckQueue) {
-    waitAndEnqueue(wait_time, AckQueue);
-    while (!AckQueue->isEmpty()) {
-        process_ack((LayerAck*) (AckQueue->pop()));
-    }
-}
-
-std::vector<uint64_t> split(const char *s, char delim = ',') {
-    std::vector<uint64_t> result;
+std::vector<int64_t> split_int(const char *s, char delim = ',') {
     std::stringstream ss(s);
     std::string item;
+    std::vector<int64_t> result;
     while (getline(ss, item, delim)) {
-        result.push_back(std::stoull(item));
+        result.push_back(std::stoll(item));
     }
     return result;
 }
 
-void TrainingProcess::activity() {
-    iterTimeSignal = registerSignal("iterTime");
-    idleTimeSignal = registerSignal("idleTime");
-    commTimeSignal = registerSignal("commTime");
-    // retrieve parameters
-    collective_scheduler = getSimulation()->findModuleByPath(
-            "<root>.collective_scheduler");
-    auto job_dispatcher = getSimulation()->findModuleByPath(
-            "<root>.job_dispatcher");
-    worker = getParentModule();
-    if (collective_scheduler) {
-        EV_DEBUG << "Collective Scheduler is "
-                        << collective_scheduler->getFullName() << endl;
-    } else
-        EV_DEBUG << "No Collective Scheduler" << endl;
-    job = (Job*) (receive()); // from worker
-    auto rank = job->getRank();
-    auto jid = job->getJob_id();
-    auto wid = worker->getId();
-    auto iters = job->getIters();
+std::vector<simtime_t> split_simtime(const char *s, char delim = ',') {
+    std::stringstream ss(s);
+    std::string item;
+    std::vector<simtime_t> result;
+    while (getline(ss, item, delim)) {
+        result.push_back(SimTime(std::stoull(item), SIMTIME_PS));
+    }
+    return result;
+}
 
-    auto model = job->getModel();
-    num_layers = n_layers(model);
-    bool distributed = job->getNum_workers_allocated() > 1;
-    cQueue AckQueue(fmt::format("Allreducer{}", getId()).c_str());
+void TrainingProcess::handleMessage(cMessage *msg) {
+    switch (msg->getKind()) {
+    case 3: {
+        // initial job msg from worker
+        job = (Job*) msg;
+        collective_scheduler = getSimulation()->findModuleByPath(
+                "<root>.collective_scheduler");
+        job_dispatcher = getSimulation()->findModuleByPath(
+                "<root>.job_dispatcher");
+        worker = getParentModule();
+        if (collective_scheduler) {
+            EV_DEBUG << "Collective Scheduler is "
+                            << collective_scheduler->getFullName() << endl;
+        } else
+            EV_DEBUG << "No Collective Scheduler" << endl;
 
-    if (job_dispatcher->par("custom_model").boolValue()) {
-        auto custom_model_sizes = split(
-                job_dispatcher->par("custom_model_sizes").stringValue());
-        auto custom_fp_times = split(
-                job_dispatcher->par("custom_fp_times").stringValue());
-        auto custom_bp_times = split(
-                job_dispatcher->par("custom_bp_times").stringValue());
-        auto custom_wu_times = split(
-                job_dispatcher->par("custom_wu_times").stringValue());
-        num_layers = custom_model_sizes.size();
-        custom_fp_times.resize(num_layers);
-        custom_bp_times.resize(num_layers);
-        custom_wu_times.resize(num_layers);
+        rank = job->getRank();
+        jid = job->getJob_id();
+        wid = worker->getId();
+        iters = job->getIters();
+        distributed = job->getNum_workers_allocated() > 1;
+
+        if (job_dispatcher->par("custom_model").boolValue()) {
+            model = split_int(
+                    job_dispatcher->par("custom_model_sizes").stringValue());
+            fp_times = split_simtime(
+                    job_dispatcher->par("custom_fp_times").stringValue());
+            bp_times = split_simtime(
+                    job_dispatcher->par("custom_bp_times").stringValue());
+            wu_times = split_simtime(
+                    job_dispatcher->par("custom_wu_times").stringValue());
+            num_layers = model.size();
+            fp_times.resize(num_layers);
+            bp_times.resize(num_layers);
+            wu_times.resize(num_layers);
+        } else {
+            auto m = job->getModel();
+            num_layers = n_layers(m);
+            model.reserve(num_layers);
+            fp_times.reserve(num_layers);
+            bp_times.reserve(num_layers);
+            wu_times.reserve(num_layers);
+            for (size_t layer = 0; layer < num_layers; ++layer) {
+                model.push_back(model_size(m, layer));
+                fp_times.push_back(SimTime(fp_time(m, layer), SIMTIME_PS));
+                bp_times.push_back(SimTime(bp_time(m, layer), SIMTIME_PS));
+                wu_times.push_back(SimTime(wu_time(m, layer), SIMTIME_PS));
+            }
+        }
+
         can_do_fp.resize(num_layers, true);
+        layer_done.resize(num_layers, false);
+
         EV_DEBUG
                         << fmt::format(
                                 "Start {}Job {} as rank {} iters {} num_layers {}",
                                 distributed ? "distributed " : "", jid, rank,
                                 iters, num_layers) << endl;
-        for (unsigned iter = 0; iter < iters; ++iter) {
-            for (size_t layer = 0; layer < num_layers; ++layer) {
-                while (!can_do_fp[layer]) {
-                    process_ack((LayerAck*) (receive()));
-                }
-                if (layer == 0) {
-                    iter_start.push(simTime());
-                }
-                waitAndProcessAck(SimTime(custom_fp_times[layer], SIMTIME_PS),
-                        &AckQueue);
-                EV_DEBUG
-                                << fmt::format(
-                                        "Worker {} Job {} iter {} done fp layer {}\n",
-                                        wid, jid, iter, layer);
-                can_do_fp[layer] = false;
-            }
 
-            for (int layer = num_layers - 1; layer >= 0; --layer) {
-                waitAndProcessAck(SimTime(custom_bp_times[layer], SIMTIME_PS),
-                        &AckQueue);
-                EV_DEBUG
-                                << fmt::format(
-                                        "Worker {} Job {} iter {} done bp layer {}\n",
-                                        wid, jid, iter, layer);
-                if (distributed) {
-//                    if (layer == num_layers - 1) {
-//
-//                    }
-                    allreduce(job, layer, custom_model_sizes[layer], iter);
-                } else {
-                    auto ack = new LayerAck();
-                    ack->setLayer(layer);
-                    scheduleAfter(SimTime(custom_wu_times[layer], SIMTIME_PS),
-                            ack);
-                }
-            }
-        }
-
-    } else {
-        can_do_fp.resize(num_layers, true);
-        EV_DEBUG
-                        << fmt::format(
-                                "Start {}Job {} as rank {} iters {} num_layers {}",
-                                distributed ? "distributed " : "", jid, rank,
-                                iters, num_layers) << endl;
-        for (unsigned iter = 0; iter < iters; ++iter) {
-            for (size_t layer = 0; layer < num_layers; ++layer) {
-                while (!can_do_fp[layer]) {
-                    process_ack((LayerAck*) (receive()));
-                }
-                if (layer == 0) {
-                    iter_start.push(simTime());
-                }
-                waitAndProcessAck(SimTime(fp_times[model][layer], SIMTIME_PS),
-                        &AckQueue);
-                EV_DEBUG
-                                << fmt::format(
-                                        "Worker {} Job {} iter {} done fp layer {}\n",
-                                        wid, jid, iter, layer);
-                can_do_fp[layer] = false;
-            }
-
-            for (int layer = num_layers - 1; layer >= 0; --layer) {
-                waitAndProcessAck(SimTime(bp_times[model][layer], SIMTIME_PS),
-                        &AckQueue);
-                EV_DEBUG
-                                << fmt::format(
-                                        "Worker {} Job {} iter {} done bp layer {}\n",
-                                        wid, jid, iter, layer);
-                if (distributed) {
-                    allreduce(job, layer,
-                            model_sizes[model][layer] < 0 ?
-                                    worker->par("test_tensor_size") :
-                                    model_sizes[model][layer], iter);
-                } else {
-                    auto ack = new LayerAck();
-                    ack->setLayer(layer);
-                    scheduleAfter(SimTime(wu_times[model][layer], SIMTIME_PS),
-                            ack);
-                }
-            }
-        }
+        auto ins = new Instruction("fp", 20);
+        scheduleAt(simTime(), ins);
+        break;
     }
-
-    for (size_t i = 0; i < num_layers; ++i) {
-        while (!can_do_fp[i]) {
-            process_ack((LayerAck*) (receive()));
+    case 20: {
+        auto ins = (Instruction*) msg;
+        auto layer = ins->getLayer();
+        // FP layer "layer-1" (or BP layer 0 if layer==0) done, try to start layer "layer"
+        if (!can_do_fp[layer]) {
+            // waiting for communication, so idling
+            idle_start.push(simTime());
+            delete ins;
+            break;
+        } else if (!idle_start.empty()) {
+            // record idle time
         }
+        can_do_fp[layer] = false; // will be reset until comm and wu for this layer are done
+        if (layer == 0) {
+            iter_start.push(simTime());
+        } else {
+            EV_DEBUG
+                            << fmt::format(
+                                    "Worker {} Job {} iter {} done fp layer {} ",
+                                    wid, jid, iter, layer - 1) << simTime()
+                            << endl;
+        }
+        ins->setLayer(layer + 1);
+        if (layer + 1 == num_layers) {
+            // next is bp
+            ins->setKind(21);
+        }
+        scheduleAfter(fp_times[layer], ins);
+//            EV_DEBUG << "start fp layer " << layer << " / " << num_layers << " "
+//                                        << fp_times[layer] << " at " << simTime() << endl;
+        break;
     }
+    case 21: {
+        auto ins = (Instruction*) msg;
+        auto layer = ins->getLayer();
+        if (layer < num_layers) {
+            EV_DEBUG
+                            << fmt::format(
+                                    "Worker {} Job {} iter {} done bp layer {} ",
+                                    wid, jid, iter, layer) << simTime() << endl;
+            // start or enqueue collective of layer "layer"
+            if (distributed) {
+                if (layer == num_layers - 1) {
+                    comm_start.push(simTime());
+                }
+//                    EV_DEBUG << "start comm layer " << layer << " at "
+//                                    << simTime() << endl;
+                allreduce(layer, ins->getIter());
+            } else {
+                auto ack = new LayerAck("ack", 4);
+                ack->setLayer(layer);
+                scheduleAfter(wu_times[layer], ack);
+//                    EV_DEBUG << "start wu layer " << layer << " "
+//                                    << wu_times[layer] << endl;
+            }
+        } else {
+            EV_DEBUG
+                            << fmt::format(
+                                    "Worker {} Job {} iter {} done fp layer {} ",
+                                    wid, jid, iter, layer - 1) << simTime()
+                            << endl;
+        }
+        if (layer == 0) {
+            // next iter layer 0
+            auto next_iter = ins->getIter() + 1;
+            if (next_iter < iters) {
+                ins->setKind(20);
+                ins->setIter(next_iter);
+                scheduleAt(simTime(), ins);
+            } else {
+                delete ins;
+            }
+        } else {
+            ins->setLayer(layer - 1);
+            scheduleAfter(bp_times[layer - 1], msg);
+//                EV_DEBUG << "start bp layer " << layer - 1 << " "
+//                                << bp_times[layer - 1] << " at " << simTime()
+//                                << endl;
+        }
+        break;
+    }
+    case 2: {
+        // LayerAck meaning collective is done, schdule after wu
+        msg->setKind(4);
+        auto ack = (LayerAck*) msg;
+        scheduleAfter(wu_times[ack->getLayer()], msg);
+        //                    EV_DEBUG << "done comm layer " << layer << " at "
+        //                                    << simTime() << endl;
+        //                    EV_DEBUG << "start wu layer " << layer << " "
+        //                                    << wu_times[layer] << endl;
+        break;
+    }
+    case 4: {
+        auto ack = (LayerAck*) msg;
+        //                    EV_DEBUG << "done wu layer " << layer << " "
+        //                                    << wu_times[layer] << endl;
+        can_do_fp[ack->getLayer()] = true;
+        layer_done[ack->getLayer()] = true;
+        if (iter + 1 < iters) {
+            auto ins = new Instruction("fp", 20);
+            ins->setIter(iter + 1);
+            scheduleAt(simTime(), ins);
+        }
+        delete ack;
+        if (std::all_of(layer_done.cbegin(), layer_done.cend(), [](bool done) {
+            return done;
+        })) {
+            // iter end time
+            iter++;
+            std::fill(layer_done.begin(), layer_done.end(), false);
+            if (iter == iters) {
+                EV_DEBUG << "rank " << rank << " done job " << jid << " at "
+                                << simTime() << endl;
+                job->setFinish_time(simTime());
+                job->setKind(5);
+                sendDirect(job, getParentModule(), "directin");
+            }
+        }
+        break;
+    }
+    case 8: {
+        // partial completion, chunks
+        delete msg;
+        break;
+    }
+    default:
 
-    EV_DEBUG << "rank " << rank << " done job " << jid << " at " << simTime()
-                    << endl;
-    job->setFinish_time(simTime());
-    job->setKind(5);
-    sendDirect(job, getParentModule(), "directin");
-    deleteModule();
+        EV_FATAL << "got unexpected message " << msg->getKind() << endl;
+        delete msg;
+        break;
+    }
 }
 
 void TrainingProcess::finish() {

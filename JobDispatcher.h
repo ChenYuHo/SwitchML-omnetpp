@@ -4,6 +4,7 @@
 #include <omnetpp.h>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <deque>
 #include "Worker.h"
 #include "Switch.h"
@@ -17,8 +18,8 @@ class TwoLayers;
 class JobDispatcher: public cSimpleModule {
 public:
     ~JobDispatcher();
-    bool accommodate(const unordered_set<uint64_t>&, uint64_t);
-    bool accommodate(const unordered_map<uint64_t, unsigned>&, uint64_t);
+    bool accommodate(const std::unordered_set<uint64_t>&, uint64_t);
+    bool accommodate(const std::unordered_map<uint64_t, unsigned>&, uint64_t);
     void clean_resources_for_tensor_key(uint64_t, uint64_t);
     void bssi(std::deque<uint64_t>&, std::unordered_map<uint64_t, double>);
 private:
