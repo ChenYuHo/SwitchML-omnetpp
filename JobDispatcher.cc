@@ -11,6 +11,15 @@ using namespace omnetpp;
 
 Define_Module(JobDispatcher);
 
+class MyListener: public cListener {
+    void receiveSignal(cComponent*, simsignal_t, bool, cObject*) override;
+};
+
+void MyListener::receiveSignal(cComponent *src, simsignal_t id, bool value,
+        cObject *details) {
+    std::cout << "received signal " << value << std::endl;
+}
+
 void JobDispatcher::initialize(int stage) {
     if (stage == 0) {
         collective_scheduler = getSimulation()->findModuleByPath(
@@ -59,6 +68,11 @@ void JobDispatcher::initialize(int stage) {
         }
         sendDirect(new cMessage,
                 getParentModule()->getSubmodule("job_submitter"), "directin");
+
+//        listener = new MyListener;
+//        this->getSimulation()->getSystemModule()->subscribe("iterTime",
+//                listener);
+
     }
 
 }
@@ -79,11 +93,11 @@ void JobDispatcher::bssi(std::deque<uint64_t> &result,
 //                std::unordered_map<unsigned, DoubleDefaultedToOne>> data_port_coflow { };
 //        // port (per worker), coflow -> data
 //        std::vector<DoubleDefaultedToOne> data_port(n_workers);
-//        // Find the most bottlenecked port
-//        int bottlenecked; // wid
-//        double current_max = 0;
-//        for (auto &pair : weights) {
-//            auto tensor_key = pair.first;
+        // Find the most bottlenecked port
+        int bottlenecked; // port id, every worker has one port, so use worker id as port id
+        double current_max = 0;
+        for (auto &pair : weights) { // tensor_key -> weight
+            auto tensor_key = pair.first;
 //            for (auto wid : workers_for_job[jid]) {
 //                auto data = double(
 //                        (CHUNK_SIZE == 0) ?
@@ -97,7 +111,7 @@ void JobDispatcher::bssi(std::deque<uint64_t> &result,
 //                    bottlenecked = wid;
 //                }
 //            }
-//        }
+        }
 //        DVLOG(3) << "bottlenecked port " << bottlenecked;
 //        // Select weighted largest job to schedule last
 //        Tensor *weighted_largest;
@@ -155,7 +169,8 @@ bool JobDispatcher::accommodate(
     return true;
 }
 
-bool JobDispatcher::accommodate(const std::unordered_set<uint64_t> &existing_jids,
+bool JobDispatcher::accommodate(
+        const std::unordered_set<uint64_t> &existing_jids,
         uint64_t jid_to_add) {
     auto active_switch_ids = std::unordered_set<int> { };
     for (auto jid : existing_jids) {
@@ -257,8 +272,10 @@ void JobDispatcher::handleMessage(cMessage *msg) {
                 ((Switch*) (getSimulation()->getModule(tor_id)))->clean_resources_for_job(
                         jid);
             }
-            if (collective_scheduler)
+            if (collective_scheduler) {
+                // kind 5
                 sendDirect(job->dup(), collective_scheduler, "directin");
+            }
 
             delete local_copy;
             jobs.erase(jid);

@@ -35,7 +35,7 @@ void ReadyAndGo::handleMessage(cMessage *msg) {
         break;
     }
     case 2: {
-        // LayerAck from Worker, meaning allreduce is done
+        // CollectiveOperationRequest from Worker, meaning allreduce is done
         delete msg;
         break;
     }

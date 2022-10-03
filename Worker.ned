@@ -1,11 +1,11 @@
 simple Worker
 {
     parameters:
-        int MTU = default(0);
+        @signal[testSignal](type=bool);
+        int MTU @mutable = default(0);
         int num_slots = default(512);
-        int num_updates = default(0);
+        int num_updates @mutable = default(0);
         int num_gpus = default(4);
-        int test_tensor_size = default(26214400);
         @display("i=device/server");
     gates:
         inout port;
@@ -15,15 +15,21 @@ simple Worker
 
 simple TrainingProcess
 {
-//    parameters:
-//        @signal[iterTime](type=simtime_t);
-//        @statistic[iterTime](source=iterTime; record=histogram,vector);
-//        
-//        @signal[idleTime](type=simtime_t);
-//        @statistic[idleTime](source=idleTime; record=histogram,vector);
-//        
-//        @signal[commTime](type=simtime_t);
-//        @statistic[commTime](source=commTime; record=histogram,vector);
+    parameters:
+        @signal[fullIterTime](type=simtime_t); // per iter, from first FP start to last WU end
+        @signal[contiguousIterTime](type=simtime_t); // per iter, from first FP of this iter start to first FP of the next iter start
+        @signal[idleTime](type=simtime_t); // per iter, time when no FP, BP is ongoing
+        @signal[idleTimeWu](type=simtime_t); // per iter, time when no FP, BP, WU is ongoing
+        @signal[commTime](type=simtime_t); // per iter, from first collective start to last collective end of an iteration
+        @signal[realCommTime](type=simtime_t); // per iter, time spend for communication
+        @statistic[fullIterTime](record=vector?);
+        @statistic[contiguousIterTime](record=vector?);
+        @statistic[idleTime](record=vector?);
+        @statistic[idleTimeWu](record=vector?);
+        @statistic[commTime](record=vector?);
+        @statistic[realCommTime](record=vector?);
+        @statistic[totalIdleTime](source=idleTime; record=sum,vector?);
+        @statistic[totalIdleTimeWu](source=idleTime; record=sum,vector?);
     gates:
         input directin;
 }

@@ -1,7 +1,7 @@
 #ifndef MODELSTATS_H_
 #define MODELSTATS_H_
-#include <omnetpp.h>
-#include <unordered_map>
+#include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -77,8 +77,31 @@ constexpr uint64_t wu_times[num_models][max_layers+1] = {
         {0}
 };
 
-constexpr size_t n_layers(short model, size_t layer=0){
-    return model_sizes[model][layer] == 0 ? layer : n_layers(model, layer+1);
+constexpr size_t n_layers(short model, size_t layer = 0) {
+    return model_sizes[model][layer] == 0 ? layer : n_layers(model, layer + 1);
+}
+
+constexpr uint64_t all_fps_and_last_bp(short m, size_t layer = 0, uint64_t sum =
+        0) {
+    auto last_layer = n_layers(m) - 1;
+    if (layer == last_layer) {
+        return sum + fp_times[m][layer] + bp_times[m][last_layer];
+    } else {
+        return all_fps_and_last_bp(m, layer + 1, sum + fp_times[m][layer]);
+    }
+}
+
+constexpr uint64_t min_wait_time(short m, size_t layer, uint64_t gbps = 100,
+        bool cal = false) {
+    auto time_needed = uint64_t(model_sizes[m][layer]) * 4 * 8 * 1000 / gbps
+            + wu_times[m][layer];
+    if (layer == 0)
+        return time_needed;
+    auto remaining = bp_times[m][layer - 1] + fp_times[m][layer - 1]
+            - min_wait_time(m, layer - 1, gbps, true);
+    if (cal)
+        return time_needed - remaining;
+    return (remaining > time_needed) ? 0 : time_needed - remaining;
 }
 
 constexpr uint64_t model_size(short m, size_t layer) {

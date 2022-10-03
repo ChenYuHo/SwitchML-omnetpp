@@ -1,3 +1,32 @@
+struct TensorKey {
+	uint64_t layer;
+	uint64_t job_id;
+}
+
+cplusplus{{
+    namespace std {
+    template<> struct hash<TensorKey> {
+        std::size_t operator()(const TensorKey &k) const {
+            size_t lhs = std::hash<uint64_t>()(k.layer);
+            size_t rhs = std::hash<uint64_t>()(k.job_id);
+            lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+            return lhs;
+        }
+    };
+    }
+    
+    bool operator==(const TensorKey& left, const TensorKey& right) {
+        return left.layer == right.layer && left.job_id == right.job_id;
+    }
+
+    bool operator<(const TensorKey& left, const TensorKey& right) {
+        // return true when right has smaller layer (higher priority)
+        return left.layer > right.layer;
+    }
+    
+    
+}}
+
 enum SwitchMLPacketType
 {
     SWITCHML_CONN_REQ = 0;
@@ -14,25 +43,18 @@ packet SwitchMLPacket
     uint32_t slot;
     uint32_t ver;
     uint32_t offset;
-    uint32_t tensor_key;
+    const TensorKey tensor_key;
+//    uint32_t tensor_key;
     uint32_t n_workers;
-    uint64_t layer;
+//    uint64_t layer;
     uint64_t job_id;
     uint64_t num_pkts_expected;
     uint64_t grad_size;
-    uint64_t num_chunks;
-    uint64_t chunk_id;
-    short model;
+//    uint64_t num_chunks;
+//    uint64_t chunk_id;
+//    short model;
     bool upward;
 }
-
-message LayerAck
-{
-    uint64_t layer;
-    uint64_t job_id;
-    uint64_t tensor_key;
-    bool completed;
-};
 
 message HierarchyQuery
 {
@@ -53,15 +75,18 @@ message CollectiveOperationRequest
 {
     int training_process_id;
     int worker_id;
+    bool completed;
     short model;
     uint64_t size;
     uint64_t rank;
     uint64_t layer;
-    uint64_t tensor_key;
+    const TensorKey tensor_key;
+//    uint64_t tensor_key;
     uint64_t job_id;
     uint64_t num_workers_allocated;
     uint64_t num_chunks = 1;
     uint64_t chunk_id = 0;
+    simtime_t start;
 };
 
 message Job

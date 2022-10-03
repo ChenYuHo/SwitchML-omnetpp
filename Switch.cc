@@ -56,7 +56,7 @@ void Switch::startTransmitting(cMessage *msg, int gid) {
     simtime_t endTransmission =
             channel ? channel->getTransmissionFinishTime() : simTime();
     scheduleAt(endTransmission, endTransmissionEvents[gid]);
-    EV_DEBUG << "endTransmission scheduled at " << endTransmission << endl;
+//    EV_DEBUG << "endTransmission scheduled at " << endTransmission << endl;
 }
 
 void Switch::multicast_downward(SwitchMLPacket *pkt) {
@@ -75,13 +75,13 @@ void Switch::handleMessage(cMessage *msg) {
     if (msg->isSelfMessage()) {
         auto pkt = (cPacket*) msg;
         // Transmission finished, we can start next one.
-        EV_DEBUG << "Transmission of gate " << pkt->getBitLength()
-                        << " finished at " << simTime() << endl;
+//        EV_DEBUG << "Transmission of gate " << pkt->getBitLength()
+//                        << " finished at " << simTime() << endl;
         auto gid = int(pkt->getBitLength());
         auto &queue = queues[gid];
         port_isBusy[gid] = false;
         if (!queue.isEmpty()) {
-            EV_DEBUG << "Start next transmission of gate " << gid << endl;
+//            EV_DEBUG << "Start next transmission of gate " << gid << endl;
             startTransmitting((cMessage*) queue.pop(), gid);
         }
         return;

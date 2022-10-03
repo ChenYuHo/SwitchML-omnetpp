@@ -60,8 +60,8 @@ public:
     }
 
     std::unordered_map<int, unsigned> place_job(const Job *job) override {
-        std::vector<int> candidates;
-        std::vector<int> selected;
+        std::vector<int> candidates { };
+        std::vector<int> selected { };
         std::unordered_map<int, unsigned> counter { };
         unsigned num_gpus_needed = job->getGpu();
 

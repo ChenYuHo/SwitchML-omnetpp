@@ -11,7 +11,7 @@ class FifoExclusive: public cSimpleModule {
 public:
     ~FifoExclusive() override;
 private:
-    std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> requests_of_key { };
+    std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> requests_of_key { };
     std::queue<uint64_t> queue { };
     JobDispatcher *job_dispatcher { };
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { };
@@ -68,15 +68,15 @@ void FifoExclusive::handleMessage(cMessage *msg) {
         break;
     }
     case 2: {
-        // LayerAck from Worker, meaning a collective operation is done
-        auto ack = (LayerAck*) msg;
-        auto jid = ack->getJob_id();
+        // CollectiveOperationRequest from Worker, meaning a collective operation is done
+        auto req = (CollectiveOperationRequest*) msg;
+        auto jid = req->getJob_id();
 
         num_workers_of_active_job_id[jid] -= 1;
         EV_DEBUG
                         << fmt::format(
-                                "FifoExclusive receives LayerAck layer {} jid {}, remaining workers {}\n",
-                                ack->getLayer(), jid,
+                                "FifoExclusive receives CollectiveOperationRequest layer {} jid {}, remaining workers {}\n",
+                                req->getLayer(), jid,
                                 num_workers_of_active_job_id[jid]);
         if (num_workers_of_active_job_id[jid] == 0) {
             num_workers_of_active_job_id.erase(jid);

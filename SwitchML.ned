@@ -9,6 +9,7 @@ network TwoLayers
     parameters:
         int switch_ports = default(16);
         int n_workers = switch_ports*(switch_ports-1);
+        @statistic[totalIdleTime](source=idleTime; record=sum?);
     types:
         channelinterface IMyChannel
         {

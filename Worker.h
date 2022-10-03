@@ -26,6 +26,7 @@ private:
     cModule *job_dispatcher;
     unsigned num_jobs_given { 0 };
     std::unordered_map<uint64_t, cQueue> collective_operation_requests_for_job { };
+    std::unordered_map<uint64_t, cMessage*> active_collective_operation_request_for_job { };
     std::unordered_map<uint64_t, bool> doing_collective_operation { };
     void startOneCollectiveOperation(uint64_t);
     int64_t MTU;
@@ -37,6 +38,9 @@ private:
     cChannel *channel;
     void initialize() override;
     void handleMessage(cMessage *msg) override;
+
+
+//    simsignal_t testSignal;
 };
 
 #endif /* WORKER_H_ */

@@ -51,6 +51,8 @@ private:
     int numInitStages() const override {
         return 2;
     }
+
+    cIListener* listener;
 };
 
 #endif /* JOBDISPATCHER_H_ */

@@ -1,0 +1,32 @@
+digraph GRAPH_0 {
+  edge [ arrowhead=open ];
+  graph [ rankdir=LR ];
+  node [
+    fontsize=11,
+    fillcolor=white,
+    style=filled,
+    shape=box ];
+
+  JobSubmitter -> JobDispatcher [ label=Job_0 ]
+  JobDispatcher -> Worker [ label=Job_3 ]
+  JobDispatcher -> Switch [ label=Setup_6 ]
+  JobDispatcher -> CollectiveScheduler [ label=Job_5 ] // clean resource
+  Worker -> JobDispatcher [ label=Job_5 ]
+  Worker -> Worker [ label=endTxEvent_1 ]
+  Worker -> Switch [ label=SwitchMLPacket ]
+  Worker -> CollectiveScheduler [label=CollectiveOperationRequest_2]
+  Worker -> TrainingProcess [ label=Job_3 ]
+  Worker -> TrainingProcess [label=CollectiveOperationRequest_2_8] // done / completed
+  
+  TrainingProcess -> TrainingProcess [ label=Instruction_20_21 ]
+  TrainingProcess -> TrainingProcess [ label=CollectiveOperationRequest_4 ] // after weight update
+  TrainingProcess -> Worker [ label=Job_5 ]
+  
+  // send to worker if no CollectiveScheduler
+  TrainingProcess -> CollectiveScheduler [label=CollectiveOperationRequest_0]
+  TrainingProcess -> Worker [label=CollectiveOperationRequest_0]
+  CollectiveScheduler -> Worker [label=CollectiveOperationRequest_0]
+  
+  Switch -> Worker [ label=SwitchMLPacket ]
+  Switch -> Switch [ label=endTxEvent_0 ]
+}

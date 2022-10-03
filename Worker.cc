@@ -8,6 +8,9 @@ using namespace omnetpp;
 Define_Module(Worker);
 
 void Worker::initialize() {
+//    testSignal = registerSignal("testSignal");
+//    emit(testSignal, true);
+
     MTU = par("MTU");
     num_updates = par("num_updates");
     if (MTU && !num_updates) {
@@ -25,7 +28,10 @@ void Worker::initialize() {
                                    num_updates, MTU);
         }
     }
+    par("MTU").setIntValue(MTU);
+    par("num_updates").setIntValue(num_updates);
     num_slots = par("num_slots");
+    EV_INFO << "num_updates " << num_updates << " MTU " << MTU << endl;
     srvProcType = cModuleType::get("TrainingProcess");
     out_gate = gate("port$o");
     ToR = out_gate->getPathEndGate()->getOwnerModule();
@@ -82,6 +88,7 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
                             getId(), job_id, grad_size, num_pkts_expected,
                             collective_operation_requests_for_job[job_id].getLength())
                     << endl;
+    m->setStart(simTime());
     for (uint64_t slot = 0; slot < num_slots; ++slot) {
         auto offset = slot * num_updates;
         if (offset >= grad_size)
@@ -94,17 +101,13 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
         p->setOffset(offset);
         p->setTensor_key(m->getTensor_key());
         p->setN_workers(m->getNum_workers_allocated());
-        p->setLayer(m->getLayer());
         p->setJob_id(m->getJob_id());
         p->setNum_pkts_expected(num_pkts_expected);
         p->setGrad_size(grad_size);
-        p->setNum_chunks(m->getNum_chunks());
-        p->setChunk_id(m->getChunk_id());
-        p->setModel(m->getModel());
         p->setUpward(true);
         try_send(p);
     }
-    delete m;
+    active_collective_operation_request_for_job[job_id] = m;
 }
 
 void Worker::handleMessage(cMessage *msg) {
@@ -133,21 +136,14 @@ void Worker::handleMessage(cMessage *msg) {
             }
             break;
         }
-        case 2: {
-            // LayerAck from self, direct to TrainingProcess
-            auto ack = (LayerAck*) msg;
-            sendDirect(ack, training_process_for_job[ack->getJob_id()],
-                    "directin");
-            break;
-        }
         case 3: { // new Job
             // mod will self destroy
-            cModule *mod =
-                    srvProcType->createScheduleInit(
-                            fmt::format("Worker{}_Job{}", getId(),
-                                    ++num_jobs_given).c_str(), this);
-            sendDirect(msg, mod, "directin");
             auto job = (Job*) (msg);
+            cModule *mod = srvProcType->createScheduleInit(
+                    fmt::format("Job{}_Rank{}_Worker{}_{}", job->getJob_id(),
+                            job->getRank(), getId(), ++num_jobs_given).c_str(),
+                    this);
+            sendDirect(msg, mod, "directin");
             training_process_for_job[job->getJob_id()] = mod;
             EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
                             << job->getJob_id() << endl;
@@ -187,40 +183,32 @@ void Worker::handleMessage(cMessage *msg) {
                                 getId(), p->getSlot(), p->getOffset(),
                                 set.size(), p->getNum_pkts_expected());
         // cancel timer if retransmission is enabled
+        auto jid = p->getJob_id();
+        auto req =
+                (CollectiveOperationRequest*) active_collective_operation_request_for_job[jid];
         if (set.size() == p->getNum_pkts_expected()) {
-            // allreduce done, notify allreducer
+            // collection operation done, notify others
             EV_DEBUG
                             << fmt::format(
                                     "Worker {} done a Collective Operation\n",
                                     getId());
-            auto completed = p->getChunk_id() + 1 == p->getNum_chunks();
-            auto ack = new LayerAck;
-            auto jid = p->getJob_id();
-            ack->setKind(2);
-            ack->setLayer(p->getLayer());
-            ack->setJob_id(jid);
-            ack->setTensor_key(p->getTensor_key());
-            ack->setCompleted(completed);
+            req->setKind(2);
+            auto completed = req->getChunk_id() + 1 == req->getNum_chunks();
+            req->setCompleted(completed);
             if (collective_scheduler) {
-                auto dup = ack->dup();
-                sendDirect(dup, collective_scheduler, "directin");
+                sendDirect(req->dup(), collective_scheduler, "directin");
             }
 
             doing_collective_operation[jid] = false;
             if (completed) {
-                // after weight update, notify TrainingProcess this collective completed
-
-//                scheduleAfter(
-//                        SimTime(int64_t(wu_time(p->getModel(), p->getLayer())),
-//                                SIMTIME_PS), ack);
-                sendDirect(ack, training_process_for_job[jid], "directin");
+                sendDirect(req, training_process_for_job[jid], "directin");
                 EV_DEBUG
                                 << fmt::format(
                                         "Worker {} Job {} done aggregation layer {}\n",
-                                        getId(), jid, p->getLayer());
+                                        getId(), jid, req->getLayer());
             } else {
-                ack->setKind(8);
-                sendDirect(ack, training_process_for_job[jid], "directin");
+                req->setKind(8);
+                sendDirect(req, training_process_for_job[jid], "directin");
             }
             if (!collective_operation_requests_for_job[jid].isEmpty()) {
                 startOneCollectiveOperation(jid);
@@ -238,7 +226,7 @@ void Worker::handleMessage(cMessage *msg) {
                 EV_DEBUG
                                 << fmt::format(
                                         "Worker {} Job {} layer {} send next offset {}\n",
-                                        getId(), p->getJob_id(), p->getLayer(),
+                                        getId(), jid, req->getLayer(),
                                         next_offset);
                 sendNextPacket(p, next_offset);
             }
@@ -248,5 +236,6 @@ void Worker::handleMessage(cMessage *msg) {
 }
 
 Worker::~Worker() {
+//    emit(testSignal, false);
     cancelAndDelete(endTransmissionEvent);
 }

@@ -10,18 +10,16 @@ using namespace omnetpp;
 class ByteScheduler: public cSimpleModule {
 private:
     uint64_t chunk_size;
-    std::unordered_map<uint64_t, uint64_t> original_size { };
-    std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> requests_of_key { };
+    std::unordered_map<TensorKey, uint64_t> original_size { };
+    std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> requests_of_key { };
     typedef std::pair<uint64_t, uint64_t> layer_tkey_pair;
-    std::unordered_map<uint64_t,
-            std::priority_queue<layer_tkey_pair, std::vector<layer_tkey_pair>,
-                    std::greater<layer_tkey_pair>>> queues_for_job { };
+    std::unordered_map<uint64_t, std::priority_queue<TensorKey>> queues_for_job { };
     std::unordered_map<uint64_t, bool> busy { };
     JobDispatcher *job_dispatcher { };
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { };
     void StartOneCollectiveOperation(uint64_t);
     void clean_resources_for_job(uint64_t);
-    void clean_resources_for_tensor(uint64_t);
+    void clean_resources_for_tensor(const TensorKey&);
     void initialize() override;
     void handleMessage(cMessage *msg) override;
 };
@@ -33,7 +31,7 @@ void ByteScheduler::initialize() {
     job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
 }
 
-void ByteScheduler::clean_resources_for_tensor(uint64_t tensor_key) {
+void ByteScheduler::clean_resources_for_tensor(const TensorKey &tensor_key) {
     requests_of_key.erase(tensor_key);
     original_size.erase(tensor_key);
 }
@@ -55,16 +53,16 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
         return;
     }
     busy[jid] = true;
-    auto tensor_key = queue.top().second;
+    auto &tensor_key = queue.top();
     auto &requests = requests_of_key[tensor_key];
     auto next_chunk_id = requests[0]->getChunk_id() + 1;
     bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
     if (last_chunk) {
-        for (auto req : requests) {
+        for (auto &req : requests) {
             req->setSize(original_size[tensor_key] % chunk_size);
         }
     }
-    for (auto req : requests) {
+    for (auto &req : requests) {
         EV_DEBUG
                         << fmt::format(
                                 "ByteScheduler notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
@@ -77,7 +75,7 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
     }
     num_workers_of_active_job_id[jid] = requests.size();
     if (last_chunk) {
-        for (auto req : requests) {
+        for (auto &req : requests) {
             delete req;
         }
         queue.pop();
@@ -89,37 +87,37 @@ void ByteScheduler::handleMessage(cMessage *msg) {
     case 0: {
         // CollectiveOperationRequest from TrainingProcess
         auto request = (CollectiveOperationRequest*) (msg);
-        auto &requests = requests_of_key[request->getTensor_key()];
+        auto &tensor_key = request->getTensor_key();
+        auto &requests = requests_of_key[tensor_key];
         requests.push_back(request);
         EV_DEBUG << requests.size() << " "
                         << request->getNum_workers_allocated() << endl;
         if (requests.size() == request->getNum_workers_allocated()) {
-            auto tensor_key = request->getTensor_key();
             auto size = request->getSize();
             original_size[tensor_key] = size;
             auto num_chunks = size / chunk_size + (size % chunk_size ? 1 : 0);
-            for (auto req : requests) {
+            for (auto &req : requests) {
                 req->setSize(chunk_size);
                 req->setNum_chunks(num_chunks);
             }
             // layers nearer the front gets higher priority
             auto jid = request->getJob_id();
-            queues_for_job[jid].push(
-                    std::make_pair(request->getLayer(), tensor_key));
+            queues_for_job[jid].push(tensor_key);
             StartOneCollectiveOperation(jid);
         }
         break;
     }
     case 2: {
-        // LayerAck from Worker, meaning a collective operation is done
-        auto ack = (LayerAck*) msg;
-        auto jid = ack->getJob_id();
+        // CollectiveOperationRequest from Worker, meaning a collective operation is done
+        auto req = (CollectiveOperationRequest*) msg;
+        auto jid = req->getJob_id();
         num_workers_of_active_job_id[jid] -= 1;
         if (num_workers_of_active_job_id[jid] == 0) {
-            EV_DEBUG << "[ByteScheduler] ]Job " << ack->getJob_id() << " layer " << ack->getLayer() << " done\n";
+            EV_DEBUG << "[ByteScheduler] ]Job " << jid << " layer "
+                            << req->getLayer() << " done\n";
             busy[jid] = false;
-            if (ack->getCompleted()) {
-                clean_resources_for_tensor(ack->getTensor_key());
+            if (req->getCompleted()) {
+                clean_resources_for_tensor(req->getTensor_key());
             }
             StartOneCollectiveOperation(jid);
         }

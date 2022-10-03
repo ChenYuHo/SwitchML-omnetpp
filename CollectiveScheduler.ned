@@ -9,7 +9,7 @@ moduleinterface ICollectiveScheduler
 simple Sincronia like ICollectiveScheduler
 {
     parameters:
-        int chunk_size = default(0);
+        int chunk_size = default(262144);
     gates:
         input directin;
 }
