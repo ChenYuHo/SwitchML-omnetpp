@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <utility>
 #include <vector>
+#include <omnetpp.h>
+using namespace omnetpp;
 
 constexpr short alexnet = 0;
 constexpr short bert = 1;
@@ -15,109 +17,35 @@ constexpr short resnet50 = 6;
 constexpr short vgg11 = 7;
 constexpr short vgg16 = 8;
 constexpr short vgg19 = 9;
-constexpr short test = 10;
-constexpr short test_multilayer = 11;
 
-constexpr size_t max_layers = 38; // bert
-constexpr size_t num_models = 12;
+constexpr size_t num_models = 10 + 1; // +1 for custom model
 
-constexpr int64_t model_sizes[num_models][max_layers+1] = {
-        {330688, 39891840, 16781312, 4097000},
-        {31260672, 8927232, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 8400896, 7346176, 9445376, 1053698},
-        {266368, 6358536},
-        {271200, 6700160, 7604224, 6815616, 2443368},
-        {405824, 6755584, 6703104, 6703104, 6703104, 7352832, 6822912, 3102696},
-        {405824, 6758656, 6703104, 6703104, 6703104, 6703104, 6703104, 8534528, 7875584, 3102696},
-        {405824, 6755584, 7417344, 7875584, 3102696},
-        {370816, 8849664, 102764544, 16781312, 4097000},
-        {555328, 7079936, 7079424, 102764544, 16781312, 4097000},
-        {555328, 7670016, 7079424, 107484160, 16781312, 4097000},
-        {-1}
-};
+extern size_t n_layers[num_models];
 
-constexpr uint64_t fp_times[num_models][max_layers+1] = {
-        {6487422000, 5547996500, 482768500, 254498000},
-        {201679500, 1695811500, 613803500, 977431500, 1360976000, 592250500, 1002414000, 1333952500, 602293500, 966248500, 1338686000, 587513500, 999311000, 1333727000, 601031500, 968510000, 1340979000, 586090500, 987556500, 1495193000, 605150500, 972399500, 1354451000, 588239500, 993769500, 1332182000, 611251500, 984363000, 1368996000, 602952000, 996895000, 1357962500, 615189500, 989255000, 1370287500, 601601500, 999744500, 411394500},
-        {14777889000, 38211556500},
-        {39062640000, 69619003000, 23538588500, 10326569500, 2301948000},
-        {36415028000, 45010404000, 24932418500, 25036425000, 24930242000, 11107929000, 4911117500, 2078128500},
-        {36436733000, 62309174000, 25085074500, 24963430500, 24960930000, 24952071500, 25011073000, 18011680500, 6339820500, 2082999000},
-        {36421561000, 45085059500, 13925746500, 6352587000, 2089498000},
-        {45970975500, 36164820500, 4127456500, 485374000, 287803500},
-        {90816362000, 51354924000, 10024820000, 4156633000, 478786000, 287318500},
-        {90902865500, 63746658500, 16688510000, 10410244000, 484357500, 293821000},
-        {0}
-};
+extern std::vector<int64_t> model_sizes[num_models];
 
-constexpr uint64_t bp_times[num_models][max_layers+1] = {
-        {6780418500, 7897807000, 791112000, 538649500},
-        {416228000, 229544768000, 6106568500, 8326861000, 14241184000, 6104166500, 8338906500, 14249240000, 6113811000, 8326589000, 14238364500, 6109754000, 8344041000, 14020027500, 2887953000, 7535392000, 15202323000, 10084485000, 6085473500, 15277926000, 10172296000, 7242516000, 15409178500, 8956063000, 7463055500, 15079349000, 9197268000, 7383737500, 1604860500, 810691500, 512126500, 1188866500, 809201000, 512058000, 1190091000, 825784000, 534169000, 4128649500},
-        {34875528000, 72078958000},
-        {91082534500, 157184949500, 51105377500, 18621429000, 4108938000},
-        {77078881500, 83454325500, 45548697000, 45538862500, 45566164000, 23223537000, 8892756000, 3708969500},
-        {77132477500, 113671785500, 45698397000, 45704558000, 45694686000, 45699517000, 45701750000, 35786120000, 11665839000, 3928979500},
-        {77064011000, 83514474000, 28129353500, 11618227000, 3549431000},
-        {91740694000, 50867676500, 4109033500, 795572000, 538523000},
-        {200656557000, 81372176000, 15606738500, 4108847000, 796019000, 550236500},
-        {200714238500, 112808855000, 20643356500, 13684955500, 799120000, 568673000},
-        {0}
-};
+extern std::vector<simtime_t> fp_times[num_models];
 
-constexpr uint64_t wu_times[num_models][max_layers+1] = {
-        {1167345, 140820177, 59238865, 14462613},
-        {17613563287, 5029973950, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 4733414348, 4139141215, 5321917838, 593697295},
-        {53534230, 1277928770},
-        {23843606, 589070697, 668555009, 599221461, 214818227},
-        {20383371, 339313527, 336677608, 336677608, 336677608, 369311574, 342695219, 155839484},
-        {21999307, 366379879, 363368461, 363368461, 363368461, 363368461, 363368461, 462648097, 426927412, 168194000},
-        {20061435, 333954398, 366667730, 389320288, 153378150},
-        {724217, 17283720, 200702948, 32774522, 8001592},
-        {1287480, 16414219, 16413032, 238250708, 38906021, 9498540},
-        {1386074, 19144017, 17669925, 268275652, 41885404, 10225929},
-        {0}
-};
+extern std::vector<simtime_t> bp_times[num_models];
 
-constexpr size_t n_layers(short model, size_t layer = 0) {
-    return model_sizes[model][layer] == 0 ? layer : n_layers(model, layer + 1);
-}
+extern std::vector<simtime_t> wu_times[num_models];
 
-constexpr uint64_t all_fps_and_last_bp(short m, size_t layer = 0, uint64_t sum =
-        0) {
-    auto last_layer = n_layers(m) - 1;
-    if (layer == last_layer) {
-        return sum + fp_times[m][layer] + bp_times[m][last_layer];
-    } else {
-        return all_fps_and_last_bp(m, layer + 1, sum + fp_times[m][layer]);
-    }
-}
+extern std::vector<const char*> fp_times_raw;
 
-constexpr uint64_t min_wait_time(short m, size_t layer, uint64_t gbps = 100,
-        bool cal = false) {
-    auto time_needed = uint64_t(model_sizes[m][layer]) * 4 * 8 * 1000 / gbps
-            + wu_times[m][layer];
-    if (layer == 0)
-        return time_needed;
-    auto remaining = bp_times[m][layer - 1] + fp_times[m][layer - 1]
-            - min_wait_time(m, layer - 1, gbps, true);
-    if (cal)
-        return time_needed - remaining;
-    return (remaining > time_needed) ? 0 : time_needed - remaining;
-}
+extern std::vector<const char*> bp_times_raw;
 
-constexpr uint64_t model_size(short m, size_t layer) {
-    return model_sizes[m][layer];
-}
+extern std::vector<const char*> wu_times_raw;
 
-constexpr uint64_t fp_time(short m, size_t layer) {
-    return fp_times[m][layer];
-}
+extern simtime_t all_fps_and_last_bp_times[num_models];
+extern simtime_t all_fps_and_bps_times[num_models];
+extern std::vector<simtime_t> min_wait_times[num_models];
+extern std::vector<simtime_t> min_wait_times_wu[num_models];
+extern simtime_t min_wait_time_sums[num_models];
+extern simtime_t min_wait_time_sums_wu[num_models];
 
-constexpr uint64_t bp_time(short m, size_t layer) {
-    return bp_times[m][layer];
-}
-
-constexpr uint64_t wu_time(short m, size_t layer) {
-    return wu_times[m][layer];
-}
+simtime_t all_fps_and_last_bp(short m);
+simtime_t all_fps_and_bps(short m);
+std::vector<simtime_t> min_wait_time(short m, bool wu_as_busy = false,
+        uint64_t gbps = 100);
 
 #endif /* MODELSTATS_H_ */

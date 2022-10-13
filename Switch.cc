@@ -23,7 +23,7 @@ void Switch::initialize() {
     }
 }
 
-void Switch::clean_resources_for_tensor(uint64_t tensor_key) {
+void Switch::clean_resources_for_tensor(const TensorKey &tensor_key) {
     count_for_tensor_key.erase(tensor_key);
     seen_for_tensor_key.erase(tensor_key);
 }
@@ -60,9 +60,10 @@ void Switch::startTransmitting(cMessage *msg, int gid) {
 }
 
 void Switch::multicast_downward(SwitchMLPacket *pkt) {
-    EV_DEBUG << "Switch " << getId() << " multicast downward pkt job "
-                    << pkt->getJob_id() << " gate ids: ";
-    for (auto gid : gate_ids_for_job[pkt->getJob_id()]) {
+    auto jid = pkt->getTensor_key().job_id;
+    EV_DEBUG << "Switch " << getId() << " multicast downward pkt job " << jid
+                    << " gate ids: ";
+    for (auto gid : gate_ids_for_job[jid]) {
         EV_DEBUG << gid << " ";
         pkt->setUpward(false);
         pkt->setFrom_id(getId());
@@ -126,18 +127,19 @@ void Switch::handleMessage(cMessage *msg) {
             EV_FATAL << "Switch " << getId()
                             << " received shadow buffer request" << endl;
         } else {
+            auto jid = p->getTensor_key().job_id;
             seen_key.insert(p->getFrom_id());
             seen[key_of_the_other_slot].erase(p->getFrom_id());
 //            std::cout << count[key] << " " << p->getN_workers() << " " << p->getJob_id() << " " << num_updates_for_job[p->getJob_id()] << std::endl;
             count[key] = ((count[key] + 1) % p->getN_workers())
-                    % num_updates_for_job[p->getJob_id()];
+                    % num_updates_for_job[jid];
             if (count[key] == 0) {
                 EV_DEBUG
                                 << fmt::format(
                                         "Switch {} done slot {} offset {}\n",
                                         getId(), p->getSlot(), p->getOffset());
                 // done aggregation for this slot
-                if (top_level_for_job[p->getJob_id()]) { // downward
+                if (top_level_for_job[jid]) { // downward
                     count[key] = p->getN_workers();
                     multicast_downward(p);
                 } else {  // upward

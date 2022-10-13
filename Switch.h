@@ -8,15 +8,15 @@ using namespace omnetpp;
 class Worker;
 class Switch: public cSimpleModule {
 public:
-    void clean_resources_for_tensor(uint64_t);
+    void clean_resources_for_tensor(const TensorKey&);
     void clean_resources_for_job(uint64_t);
     ~Switch() override;
     void initialize() override;
     void handleMessage(cMessage *msg) override;
 private:
     std::unordered_map<int, int> gate_id { }; // switch or worker id -> gate id
-    std::unordered_map<uint64_t, std::unordered_map<std::string, unsigned>> count_for_tensor_key { }; // jid, hash
-    std::unordered_map<uint64_t,
+    std::unordered_map<TensorKey, std::unordered_map<std::string, unsigned>> count_for_tensor_key { }; // jid, hash
+    std::unordered_map<TensorKey,
             std::unordered_map<std::string, std::unordered_set<unsigned>>> seen_for_tensor_key { };
     std::unordered_map<unsigned, unsigned> num_updates_for_job { };
     std::unordered_map<unsigned, bool> top_level_for_job { };

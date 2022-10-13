@@ -26,20 +26,12 @@ simple CSVJobSubmitter like IJobSubmitter
 simple JobDispatcher
 {
     parameters:
-//        @signal[iterTime](type=simtime_t);
-//        @statistic[testSignal](record=vector; checkSignals=false);
-        
-        
+        @signal[iterTime](type=simtime_t);
         @signal[jobCompletionTime](type=simtime_t);
         @signal[jobSubmissionTime](type=simtime_t);
         @signal[jobWaitTime](type=simtime_t);
         @signal[jobStartTime](type=simtime_t);
         @signal[jobPlacementType](type=int);
-        @statistic[jobCompletionTime](record=vector);
-        @statistic[jobSubmissionTime](record=vector);
-        @statistic[jobWaitTime](record=vector);
-        @statistic[jobStartTime](record=vector);
-        @statistic[jobPlacementType](record=vector);
         string hierarchy = default("two_layers");
         string job_scheduling = default("fifo");
         string job_placement = default("random_multiracks");

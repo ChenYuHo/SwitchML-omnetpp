@@ -10,7 +10,10 @@ Define_Module(Worker);
 void Worker::initialize() {
 //    testSignal = registerSignal("testSignal");
 //    emit(testSignal, true);
-
+    gbps = int64_t(
+            gate("port$o")->getChannel()->par("datarate").doubleValue() / 1e9);
+    EV_DEBUG << "gbps " << gbps << endl;
+    packet_simulation = par("packet_simulation");
     MTU = par("MTU");
     num_updates = par("num_updates");
     if (MTU && !num_updates) {
@@ -42,6 +45,8 @@ void Worker::initialize() {
     channel = out_gate->findTransmissionChannel();
     isBusy = false;
     job_dispatcher = getParentModule()->getSubmodule("job_dispatcher");
+    pktOut = registerSignal("pktOut");
+//    pktIn = registerSignal("pktIn");
 }
 
 void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
@@ -68,9 +73,39 @@ void Worker::try_send(cPacket *pkt) {
 void Worker::startTransmitting(cMessage *pkt) {
     isBusy = true;
     send(pkt, out_gate);
+    emit(pktOut, pkt);
     simtime_t endTransmission =
             channel ? channel->getTransmissionFinishTime() : simTime();
     scheduleAt(endTransmission, endTransmissionEvent);
+}
+
+void Worker::notifyCollectiveOperationDone(CollectiveOperationRequest *req) {
+    EV_DEBUG << fmt::format("Worker {} done a Collective Operation\n", getId());
+    req->setKind(2);
+    auto &tensor_key = req->getTensor_key();
+    auto jid = tensor_key.job_id;
+    auto completed = req->getChunk_id() + 1 == req->getNum_chunks();
+    req->setCompleted(completed);
+    if (collective_scheduler) {
+        sendDirect(req->dup(), collective_scheduler, "directin");
+    }
+
+    doing_collective_operation[jid] = false;
+    if (completed) {
+        sendDirect(req, training_process_for_job[jid], "directin");
+        EV_DEBUG
+                        << fmt::format(
+                                "Worker {} Job {} done aggregation layer {}\n",
+                                getId(), jid, tensor_key.layer);
+    } else {
+        req->setKind(8);
+        sendDirect(req, training_process_for_job[jid], "directin");
+    }
+    if (!collective_operation_requests_for_job[jid].isEmpty()) {
+        startOneCollectiveOperation(jid);
+    }
+    ((JobDispatcher*) (job_dispatcher))->clean_resources_for_tensor_key(jid,
+            tensor_key);
 }
 
 void Worker::startOneCollectiveOperation(uint64_t job_id) {
@@ -79,35 +114,48 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
             (CollectiveOperationRequest*) (collective_operation_requests_for_job[job_id].pop());
     doing_collective_operation[job_id] = true;
     auto grad_size = m->getSize();
-    auto num_pkts_expected = grad_size / num_updates;
-    if (grad_size % num_updates)
-        num_pkts_expected += 1;
-    EV_DEBUG
-                    << fmt::format(
-                            "Worker {} startOneCollectiveOperation for job {} grad_size {}, expect {} pkts, queue still has {} reqs",
-                            getId(), job_id, grad_size, num_pkts_expected,
-                            collective_operation_requests_for_job[job_id].getLength())
-                    << endl;
     m->setStart(simTime());
-    for (uint64_t slot = 0; slot < num_slots; ++slot) {
-        auto offset = slot * num_updates;
-        if (offset >= grad_size)
-            break;
-        auto p = new SwitchMLPacket();
-        p->setByteLength(MTU);
-        p->setFrom_id(getId());
-        p->setSlot(slot);
-        p->setVer(0);
-        p->setOffset(offset);
-        p->setTensor_key(m->getTensor_key());
-        p->setN_workers(m->getNum_workers_allocated());
-        p->setJob_id(m->getJob_id());
-        p->setNum_pkts_expected(num_pkts_expected);
-        p->setGrad_size(grad_size);
-        p->setUpward(true);
-        try_send(p);
+    if (packet_simulation) {
+        auto num_pkts_expected = grad_size / num_updates;
+        if (grad_size % num_updates)
+            num_pkts_expected += 1;
+        EV_DEBUG
+                        << fmt::format(
+                                "Worker {} startOneCollectiveOperation for job {} grad_size {}, expect {} pkts, queue still has {} reqs",
+                                getId(), job_id, grad_size, num_pkts_expected,
+                                collective_operation_requests_for_job[job_id].getLength())
+                        << endl;
+        for (uint64_t slot = 0; slot < num_slots; ++slot) {
+            auto offset = slot * num_updates;
+            if (offset >= grad_size)
+                break;
+            auto p = new SwitchMLPacket();
+            p->setByteLength(MTU);
+            p->setFrom_id(getId());
+            p->setSlot(slot);
+            p->setVer(0);
+            p->setOffset(offset);
+            p->setTensor_key(m->getTensor_key());
+            p->setN_workers(m->getNum_workers_allocated());
+            p->setNum_pkts_expected(num_pkts_expected);
+            p->setGrad_size(grad_size);
+            p->setUpward(true);
+            try_send(p);
+        }
+        active_collective_operation_request_for_job[job_id] = m;
+    } else {
+        EV_DEBUG
+                        << fmt::format(
+                                "Worker {} startOneCollectiveOperation for job {} grad_size {}, queue still has {} reqs",
+                                getId(), job_id, grad_size,
+                                collective_operation_requests_for_job[job_id].getLength())
+                        << endl;
+        m->setKind(7);
+        EV_DEBUG << "time  "
+                        << SimTime(grad_size * 4 * 8 * 1000 / gbps, SIMTIME_PS)
+                        << endl;
+        scheduleAfter(SimTime(grad_size * 4 * 8 * 1000 / gbps, SIMTIME_PS), m);
     }
-    active_collective_operation_request_for_job[job_id] = m;
 }
 
 void Worker::handleMessage(cMessage *msg) {
@@ -116,15 +164,16 @@ void Worker::handleMessage(cMessage *msg) {
         case 0: {
             // CollectiveOperationRequest from CollectiveOperationScheduler or TrainingProcess
             auto req = (CollectiveOperationRequest*) msg;
-            collective_operation_requests_for_job[req->getJob_id()].insert(req);
+            auto jid = req->getTensor_key().job_id;
+            collective_operation_requests_for_job[jid].insert(req);
             EV_DEBUG
                             << fmt::format(
                                     "Worker {} collective_operation_requests_for_job for job {} queue has {} reqs",
-                                    getId(), req->getJob_id(),
-                                    collective_operation_requests_for_job[req->getJob_id()].getLength())
+                                    getId(), jid,
+                                    collective_operation_requests_for_job[jid].getLength())
                             << endl;
-            if (!doing_collective_operation[req->getJob_id()]) {
-                startOneCollectiveOperation(req->getJob_id());
+            if (!doing_collective_operation[jid]) {
+                startOneCollectiveOperation(jid);
             }
             break;
         }
@@ -160,6 +209,10 @@ void Worker::handleMessage(cMessage *msg) {
             doing_collective_operation.erase(jid);
             break;
         }
+        case 7: { // Collective operation done for non packet simulations
+            notifyCollectiveOperationDone((CollectiveOperationRequest*) msg);
+            break;
+        }
         default:
             delete msg;
             EV_FATAL << "got unexpected message" << endl;
@@ -169,6 +222,7 @@ void Worker::handleMessage(cMessage *msg) {
     }
 
     auto p = (SwitchMLPacket*) (msg);
+//    emit(pktIn, p);
     EV_DEBUG << "Worker " << getId() << " get packet slot " << p->getSlot()
                     << " at " << simTime() << endl;
     auto &set = received_pkts[p->getTensor_key()];
@@ -183,51 +237,24 @@ void Worker::handleMessage(cMessage *msg) {
                                 getId(), p->getSlot(), p->getOffset(),
                                 set.size(), p->getNum_pkts_expected());
         // cancel timer if retransmission is enabled
-        auto jid = p->getJob_id();
-        auto req =
-                (CollectiveOperationRequest*) active_collective_operation_request_for_job[jid];
+        auto &tensor_key = p->getTensor_key();
         if (set.size() == p->getNum_pkts_expected()) {
-            // collection operation done, notify others
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} done a Collective Operation\n",
-                                    getId());
-            req->setKind(2);
-            auto completed = req->getChunk_id() + 1 == req->getNum_chunks();
-            req->setCompleted(completed);
-            if (collective_scheduler) {
-                sendDirect(req->dup(), collective_scheduler, "directin");
-            }
+            // collection operation done!
+            notifyCollectiveOperationDone(
+                    (CollectiveOperationRequest*) active_collective_operation_request_for_job[tensor_key.job_id]);
 
-            doing_collective_operation[jid] = false;
-            if (completed) {
-                sendDirect(req, training_process_for_job[jid], "directin");
-                EV_DEBUG
-                                << fmt::format(
-                                        "Worker {} Job {} done aggregation layer {}\n",
-                                        getId(), jid, req->getLayer());
-            } else {
-                req->setKind(8);
-                sendDirect(req, training_process_for_job[jid], "directin");
-            }
-            if (!collective_operation_requests_for_job[jid].isEmpty()) {
-                startOneCollectiveOperation(jid);
-            }
-
-            // can't clear yet if loss recovery is enabled
+            // clear local resources (can't clear yet if loss recovery is enabled)
             set.clear();
-            auto tensor_key = p->getTensor_key();
             received_pkts.erase(tensor_key);
-            ((JobDispatcher*) (job_dispatcher))->clean_resources_for_tensor_key(
-                    jid, tensor_key);
         } else {
+            // send next
             auto next_offset = p->getOffset() + num_slots * num_updates;
             if (next_offset < p->getGrad_size()) {
                 EV_DEBUG
                                 << fmt::format(
                                         "Worker {} Job {} layer {} send next offset {}\n",
-                                        getId(), jid, req->getLayer(),
-                                        next_offset);
+                                        getId(), tensor_key.job_id,
+                                        tensor_key.layer, next_offset);
                 sendNextPacket(p, next_offset);
             }
         }

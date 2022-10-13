@@ -20,8 +20,9 @@ public:
     ~JobDispatcher();
     bool accommodate(const std::unordered_set<uint64_t>&, uint64_t);
     bool accommodate(const std::unordered_map<uint64_t, unsigned>&, uint64_t);
-    void clean_resources_for_tensor_key(uint64_t, uint64_t);
-    void bssi(std::deque<uint64_t>&, std::unordered_map<uint64_t, double>);
+    void clean_resources_for_tensor_key(uint64_t, const TensorKey&);
+    void bssi(std::deque<TensorKey>&, std::unordered_map<TensorKey, double>,
+            const std::unordered_map<TensorKey, uint64_t>&);
 private:
     friend Random;
     friend TwoLayers;
@@ -39,11 +40,11 @@ private:
 //    std::unordered_map<int, Switch*> tors { };
     std::unordered_map<int, int> tor_id_for_worker { };
     std::unordered_map<int, unsigned> free_gpus { }; // worker id -> free gpus
-    simsignal_t jctSignal;
-    simsignal_t jsmtSignal;
-    simsignal_t jstSignal;
-    simsignal_t jwtSignal;
-    simsignal_t jpSignal;
+    simsignal_t jobCompletionTime;
+    simsignal_t jobSubmissionTime;
+    simsignal_t jobStartTime;
+    simsignal_t jobWaitTime;
+    simsignal_t jobPlacementType;
     bool tryDispatchAJob();
 
     void initialize(int) override;
@@ -52,7 +53,7 @@ private:
         return 2;
     }
 
-    cIListener* listener;
+    cIListener *listener;
 };
 
 #endif /* JOBDISPATCHER_H_ */

@@ -10,23 +10,20 @@ using namespace omnetpp;
 class Sincronia: public cSimpleModule {
 private:
     uint64_t chunk_size;
-    std::unordered_map<uint64_t, uint64_t> remaining_size { };
-    std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> requests_of_key { };
-    typedef std::pair<uint64_t, uint64_t> layer_tkey_pair;
-    std::unordered_map<uint64_t,
-            std::priority_queue<layer_tkey_pair, std::vector<layer_tkey_pair>,
-                    std::greater<layer_tkey_pair>>> queues_for_job { };
+    std::unordered_map<TensorKey, uint64_t> remaining_sizes { };
+    std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> requests_of_key { };
+    std::unordered_map<uint64_t, std::priority_queue<TensorKey>> queues_for_job { };
 //    std::unordered_map<uint64_t, bool> busy { };
     JobDispatcher *job_dispatcher { };
     void clean_resources_for_job(uint64_t);
-    void clean_resources_for_tensor(uint64_t);
+    void clean_resources_for_tensor(const TensorKey&);
     void initialize() override;
     void handleMessage(cMessage *msg) override;
 //    void order_and_run();
     void updatePendingTensors();
-    double get_weight(uint64_t);
+    double get_weight(const TensorKey&);
     unsigned StartCollectiveOperations();
-    std::deque<uint64_t> pending_tensors { };
+    std::deque<TensorKey> pending_tensors { };
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { }; // only one will be active
 };
 
@@ -37,12 +34,12 @@ void Sincronia::initialize() {
     job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
 }
 
-void Sincronia::clean_resources_for_tensor(uint64_t tensor_key) {
-    for (auto req : requests_of_key[tensor_key]) {
+void Sincronia::clean_resources_for_tensor(const TensorKey &tensor_key) {
+    for (auto &req : requests_of_key[tensor_key]) {
         delete req;
     }
     requests_of_key.erase(tensor_key);
-    remaining_size.erase(tensor_key);
+    remaining_sizes.erase(tensor_key);
 }
 
 void Sincronia::clean_resources_for_job(uint64_t jid) {
@@ -57,7 +54,7 @@ void Sincronia::clean_resources_for_job(uint64_t jid) {
 //    bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
 //    if (last_chunk) {
 //        for (auto req : requests) {
-//            req->setSize(remaining_size[tensor_key]);
+//            req->setSize(remaining_sizes[tensor_key]);
 //        }
 //    }
 //    for (auto req : requests) {
@@ -74,16 +71,16 @@ void Sincronia::clean_resources_for_job(uint64_t jid) {
 ////    num_workers_of_active_job_id[jid] = requests.size();
 ////    if (last_chunk) {
 ////
-////        remaining_size[tensor_key] = 0;
+////        remaining_sizes[tensor_key] = 0;
 ////    } else {
-////        remaining_size[tensor_key] -= chunk_size;
+////        remaining_sizes[tensor_key] -= chunk_size;
 ////    }
 //}
 
-double Sincronia::get_weight(uint64_t tensor_key) {
+double Sincronia::get_weight(const TensorKey &tensor_key) {
 //    auto req = requests_of_key[tensor_key];
     // remaining size
-    return double(remaining_size[tensor_key]);
+    return double(remaining_sizes[tensor_key]);
 }
 
 unsigned Sincronia::StartCollectiveOperations() {
@@ -93,12 +90,13 @@ unsigned Sincronia::StartCollectiveOperations() {
     auto last_size = (uint64_t) -1; // 2^64-1, largest uint64_t
     for (auto iterator = pending_tensors.begin();
             iterator != pending_tensors.end();) {
-        auto tensor_key = *iterator;
+        auto &tensor_key = *iterator;
         auto &requests = requests_of_key[tensor_key];
-        auto jid_to_add = requests[0]->getJob_id();
+        auto jid_to_add = tensor_key.job_id;
+        auto layer = tensor_key.layer;
         if (job_dispatcher->accommodate(num_workers_of_active_job_id,
                 jid_to_add)) {
-            auto this_size = std::min(remaining_size[tensor_key], chunk_size);
+            auto this_size = std::min(remaining_sizes[tensor_key], chunk_size);
             if (this_size <= last_size) {
                 // add to active
                 last_size = this_size; // to ensure strict ordering: work conservation doesn't take larger tensors
@@ -107,14 +105,14 @@ unsigned Sincronia::StartCollectiveOperations() {
                 bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
                 for (auto &req : requests) {
                     if (last_chunk) {
-                        req->setSize(remaining_size[tensor_key]);
+                        req->setSize(remaining_sizes[tensor_key]);
                     }
                     EV_DEBUG
                                     << fmt::format(
                                             "Sincronia notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
-                                            req->getWorker_id(),
-                                            req->getJob_id(), req->getLayer(),
-                                            next_chunk_id, req->getNum_chunks(),
+                                            req->getWorker_id(), jid_to_add,
+                                            layer, next_chunk_id,
+                                            req->getNum_chunks(),
                                             req->getSize());
                     sendDirect(req->dup(),
                             getSimulation()->getModule(req->getWorker_id()),
@@ -123,9 +121,9 @@ unsigned Sincronia::StartCollectiveOperations() {
                 }
                 num_workers_of_active_job_id[jid_to_add] = requests.size();
                 if (last_chunk) {
-                    remaining_size[tensor_key] = 0;
+                    remaining_sizes[tensor_key] = 0;
                 } else {
-                    remaining_size[tensor_key] -= chunk_size;
+                    remaining_sizes[tensor_key] -= chunk_size;
                 }
                 iterator = pending_tensors.erase(iterator);
             } else {
@@ -147,21 +145,22 @@ unsigned Sincronia::StartCollectiveOperations() {
 //}
 
 void Sincronia::updatePendingTensors() {
-    std::unordered_map<uint64_t, double> weights { }; // tensor_key -> weight
+    std::unordered_map<TensorKey, double> weights { }; // tensor_key -> weight
     for (auto &pair : queues_for_job) {
         auto &pq = pair.second;
         while (!pq.empty()) {
-            auto tensor_key = pq.top().second;
-            if (remaining_size[tensor_key] == 0) {
+            auto &tensor_key = pq.top();
+            if (remaining_sizes[tensor_key] == 0) {
                 // this tensor is done!
                 pq.pop();
                 continue;
             }
             weights[tensor_key] = get_weight(tensor_key);
-            auto &req = requests_of_key[tensor_key][0];
-            EV_DEBUG << "Job " << req->getJob_id() << " layer "
-                            << req->getLayer() << " weight "
-                            << weights[tensor_key] << endl;
+//            auto &req = requests_of_key[tensor_key][0];
+
+//            EV_DEBUG << "Job " << tensor_key.job_id << " layer "
+//                            << tensor_key.layer << " weight "
+//                            << weights[tensor_key] << endl;
             break; // while loop
         }
     }
@@ -171,7 +170,7 @@ void Sincronia::updatePendingTensors() {
         return;
     // bssi
     if (weights.size() > 1) {
-        job_dispatcher->bssi(pending_tensors, weights);
+        job_dispatcher->bssi(pending_tensors, weights, remaining_sizes);
     } else {
         pending_tensors.push_back(weights.begin()->first);
     }
@@ -182,21 +181,20 @@ void Sincronia::handleMessage(cMessage *msg) {
     case 0: {
         // CollectiveOperationRequest from TrainingProcess
         auto request = (CollectiveOperationRequest*) (msg);
-        auto tensor_key = request->getTensor_key();
+        auto &tensor_key = request->getTensor_key();
         auto &requests = requests_of_key[tensor_key];
         requests.push_back(request);
         if (requests.size() == request->getNum_workers_allocated()) {
             auto size = request->getSize();
-            remaining_size[tensor_key] = size;
+            remaining_sizes[tensor_key] = size;
             auto num_chunks = size / chunk_size + (size % chunk_size ? 1 : 0);
             for (auto req : requests) {
                 req->setSize(chunk_size);
                 req->setNum_chunks(num_chunks);
             }
             // layers nearer the front (smaller index) gets higher priority
-            auto jid = request->getJob_id();
-            queues_for_job[jid].push(
-                    std::make_pair(request->getLayer(), tensor_key));
+            auto jid = request->getTensor_key().job_id;
+            queues_for_job[jid].push(tensor_key);
             updatePendingTensors();
             StartCollectiveOperations();
         }
@@ -205,14 +203,15 @@ void Sincronia::handleMessage(cMessage *msg) {
     case 2: {
         // CollectiveOperationRequest from Worker, meaning a collective operation is done
         auto req = (CollectiveOperationRequest*) msg;
-        auto jid = req->getJob_id();
+        auto &tensor_key = req->getTensor_key();
+        auto jid = tensor_key.job_id;
         num_workers_of_active_job_id[jid] -= 1;
         if (num_workers_of_active_job_id[jid] == 0) {
-            EV_DEBUG << "Job " << jid << " layer " << req->getLayer()
+            EV_DEBUG << "Job " << jid << " layer " << tensor_key.layer
                             << " done\n";
 //            busy[jid] = false;
-            auto tensor_key = req->getTensor_key();
-            if (remaining_size[tensor_key] == 0) {
+            auto &tensor_key = req->getTensor_key();
+            if (remaining_sizes[tensor_key] == 0) {
                 clean_resources_for_tensor(tensor_key);
             }
             num_workers_of_active_job_id.erase(jid);

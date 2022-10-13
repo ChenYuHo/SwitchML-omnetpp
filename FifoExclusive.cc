@@ -12,7 +12,7 @@ public:
     ~FifoExclusive() override;
 private:
     std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> requests_of_key { };
-    std::queue<uint64_t> queue { };
+    std::queue<TensorKey> queue { };
     JobDispatcher *job_dispatcher { };
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { };
     bool TryStartOneCollectiveOperation();
@@ -29,24 +29,25 @@ void FifoExclusive::initialize() {
 bool FifoExclusive::TryStartOneCollectiveOperation() {
     if (queue.empty())
         return false;
-    auto tensor_key = queue.front(); // FIFO
+    auto &tensor_key = queue.front(); // FIFO
     auto &requests = requests_of_key[tensor_key];
-    auto jid_to_add = requests[0]->getJob_id();
+    auto jid_to_add = tensor_key.job_id;
+    auto layer = tensor_key.layer;
     if (job_dispatcher->accommodate(num_workers_of_active_job_id, jid_to_add)) {
         // can accommodate, start collective operation
         for (auto req : requests) {
             EV_DEBUG
                             << fmt::format(
                                     "FifoExclusive notifies Worker {} to start Collective Operation for Job {} layer {}/{}, chunk {}/{}\n",
-                                    req->getWorker_id(), req->getJob_id(),
-                                    req->getLayer(), n_layers(req->getModel()),
+                                    req->getWorker_id(), jid_to_add, layer,
+                                    n_layers[req->getModel()],
                                     req->getChunk_id(), req->getNum_chunks());
             sendDirect(req, getSimulation()->getModule(req->getWorker_id()),
                     "directin");
         }
         num_workers_of_active_job_id[jid_to_add] = requests.size();
-        queue.pop();
         requests_of_key.erase(tensor_key); // sent out, no need to delete pointers
+        queue.pop();
         return true;
     } else
         return false;
@@ -70,14 +71,15 @@ void FifoExclusive::handleMessage(cMessage *msg) {
     case 2: {
         // CollectiveOperationRequest from Worker, meaning a collective operation is done
         auto req = (CollectiveOperationRequest*) msg;
-        auto jid = req->getJob_id();
+        auto &tensor_key = req->getTensor_key();
+        auto jid = tensor_key.job_id;
+        auto layer = tensor_key.layer;
 
         num_workers_of_active_job_id[jid] -= 1;
         EV_DEBUG
                         << fmt::format(
                                 "FifoExclusive receives CollectiveOperationRequest layer {} jid {}, remaining workers {}\n",
-                                req->getLayer(), jid,
-                                num_workers_of_active_job_id[jid]);
+                                layer, jid, num_workers_of_active_job_id[jid]);
         if (num_workers_of_active_job_id[jid] == 0) {
             num_workers_of_active_job_id.erase(jid);
             while (TryStartOneCollectiveOperation()) {

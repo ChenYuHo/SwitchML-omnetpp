@@ -14,9 +14,10 @@ public:
     }
     ;
 private:
+    bool packet_simulation;
     cModule *ToR;
     cModuleType *srvProcType;
-    std::unordered_map<uint32_t, std::unordered_set<uint32_t>> received_pkts { };
+    std::unordered_map<TensorKey, std::unordered_set<uint32_t>> received_pkts { };
     cGate *out_gate;
     void sendNextPacket(SwitchMLPacket*, uint32_t);
     uint64_t num_slots;
@@ -38,9 +39,11 @@ private:
     cChannel *channel;
     void initialize() override;
     void handleMessage(cMessage *msg) override;
+    void notifyCollectiveOperationDone(CollectiveOperationRequest*);
+    int64_t gbps;
 
-
-//    simsignal_t testSignal;
+    simsignal_t pktOut;
+//    simsignal_t pktIn;
 };
 
 #endif /* WORKER_H_ */

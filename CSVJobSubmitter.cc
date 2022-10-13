@@ -58,8 +58,6 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
             job_info->setModel(resnet152);
         } else if (m == "bert") {
             job_info->setModel(bert);
-        } else if (m == "test") {
-            job_info->setModel(test);
         } else { // resnet50
             job_info->setModel(resnet50);
         }

@@ -63,11 +63,12 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
         }
     }
     for (auto &req : requests) {
+        auto &tensor_key = req->getTensor_key();
         EV_DEBUG
                         << fmt::format(
                                 "ByteScheduler notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
-                                req->getWorker_id(), req->getJob_id(),
-                                req->getLayer(), next_chunk_id,
+                                req->getWorker_id(), tensor_key.job_id,
+                                tensor_key.layer, next_chunk_id,
                                 req->getNum_chunks(), req->getSize());
         sendDirect(req->dup(), getSimulation()->getModule(req->getWorker_id()),
                 "directin");
@@ -101,7 +102,7 @@ void ByteScheduler::handleMessage(cMessage *msg) {
                 req->setNum_chunks(num_chunks);
             }
             // layers nearer the front gets higher priority
-            auto jid = request->getJob_id();
+            auto jid = request->getTensor_key().job_id;
             queues_for_job[jid].push(tensor_key);
             StartOneCollectiveOperation(jid);
         }
@@ -110,11 +111,12 @@ void ByteScheduler::handleMessage(cMessage *msg) {
     case 2: {
         // CollectiveOperationRequest from Worker, meaning a collective operation is done
         auto req = (CollectiveOperationRequest*) msg;
-        auto jid = req->getJob_id();
+        auto &tensor_key = req->getTensor_key();
+        auto jid = tensor_key.job_id;
         num_workers_of_active_job_id[jid] -= 1;
         if (num_workers_of_active_job_id[jid] == 0) {
             EV_DEBUG << "[ByteScheduler] ]Job " << jid << " layer "
-                            << req->getLayer() << " done\n";
+                            << tensor_key.layer << " done\n";
             busy[jid] = false;
             if (req->getCompleted()) {
                 clean_resources_for_tensor(req->getTensor_key());

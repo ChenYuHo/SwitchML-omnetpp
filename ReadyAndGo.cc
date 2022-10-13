@@ -7,7 +7,7 @@ using namespace omnetpp;
  */
 class ReadyAndGo: public cSimpleModule {
 private:
-    std::unordered_map<uint64_t, std::vector<CollectiveOperationRequest*>> queue { };
+    std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> queue { };
     void initialize() override;
     void handleMessage(cMessage *msg) override;
 };

@@ -11,15 +11,6 @@ using namespace omnetpp;
 
 Define_Module(JobDispatcher);
 
-class MyListener: public cListener {
-    void receiveSignal(cComponent*, simsignal_t, bool, cObject*) override;
-};
-
-void MyListener::receiveSignal(cComponent *src, simsignal_t id, bool value,
-        cObject *details) {
-    std::cout << "received signal " << value << std::endl;
-}
-
 void JobDispatcher::initialize(int stage) {
     if (stage == 0) {
         collective_scheduler = getSimulation()->findModuleByPath(
@@ -53,11 +44,11 @@ void JobDispatcher::initialize(int stage) {
             EV_FATAL << "Unexpected Job Placement: " << p << endl;
         }
 
-        jsmtSignal = registerSignal("jobSubmissionTime");
-        jctSignal = registerSignal("jobCompletionTime");
-        jstSignal = registerSignal("jobStartTime");
-        jwtSignal = registerSignal("jobWaitTime");
-        jpSignal = registerSignal("jobPlacementType");
+        jobSubmissionTime = registerSignal("jobSubmissionTime");
+        jobCompletionTime = registerSignal("jobCompletionTime");
+        jobStartTime = registerSignal("jobStartTime");
+        jobWaitTime = registerSignal("jobWaitTime");
+        jobPlacementType = registerSignal("jobPlacementType");
     } else if (stage == 1) {
         for (int i = 0; i < n_workers; ++i) {
             auto wid = getParentModule()->findSubmodule("workers", i);
@@ -81,69 +72,82 @@ struct DoubleDefaultedToOne {
     double d = 1;
 };
 
-void JobDispatcher::bssi(std::deque<uint64_t> &result,
-        std::unordered_map<uint64_t, double> weights) {
-    for (const auto &pair : weights) {
-        result.push_back(pair.first);
-    }
+void JobDispatcher::bssi(std::deque<TensorKey> &result,
+        std::unordered_map<TensorKey, double> weights,
+        const std::unordered_map<TensorKey, uint64_t> &remaining_sizes) {
+    auto iters = weights.size();
 
-//    auto iters = weights.size();
-//    for (unsigned i = 0; i < iters - 1; ++i) {
-//        std::unordered_map<int, // worker id
-//                std::unordered_map<unsigned, DoubleDefaultedToOne>> data_port_coflow { };
-//        // port (per worker), coflow -> data
-//        std::vector<DoubleDefaultedToOne> data_port(n_workers);
+    EV_DEBUG << "bssi on:\n";
+    for (auto &pair : weights) {
+        EV_DEBUG << " jid " << pair.first.job_id << " layer "
+                        << pair.first.layer << " weight " << pair.second
+                        << endl;
+    }
+#ifndef NDEBUG
+    std::stringstream ss;
+    ss << "bssi result (last->first):";
+#endif
+    for (unsigned i = 0; i < iters - 1; ++i) {
+        std::unordered_map<int, // worker id
+                std::unordered_map<uint64_t, DoubleDefaultedToOne>> data_port_coflow { };
+        // port (per worker), coflow -> data
+        std::unordered_map<int, DoubleDefaultedToOne> data_port { };
         // Find the most bottlenecked port
         int bottlenecked; // port id, every worker has one port, so use worker id as port id
         double current_max = 0;
         for (auto &pair : weights) { // tensor_key -> weight
-            auto tensor_key = pair.first;
-//            for (auto wid : workers_for_job[jid]) {
-//                auto data = double(
-//                        (CHUNK_SIZE == 0) ?
-//                                tensor->size :
-//                                std::min(tensor->size - tensor->allreduced_size,
-//                                        CHUNK_SIZE));
-//                data_port_coflow[wid][tensor->job->id].d += data;
-//                data_port[wid].d += data;
-//                if (data_port[wid].d >= current_max) {
-//                    current_max = data_port[wid].d;
-//                    bottlenecked = wid;
-//                }
-//            }
+            auto &tensor_key = pair.first;
+            auto jid = tensor_key.job_id;
+            for (auto wid : workers_for_job[jid]) {
+                auto data = remaining_sizes.at(tensor_key);
+                data_port_coflow[wid][jid].d += data;
+                data_port[wid].d += data;
+                if (data_port[wid].d >= current_max) {
+                    current_max = data_port[wid].d;
+                    bottlenecked = wid;
+                }
+            }
         }
-//        DVLOG(3) << "bottlenecked port " << bottlenecked;
-//        // Select weighted largest job to schedule last
-//        Tensor *weighted_largest;
-//        auto current_min = DBL_MAX;
-//        double min_weight;
-//        for (auto &pair : weights) {
-//            auto weight = pair.second
-//                    / data_port_coflow[bottlenecked][pair.first->job->id].d;
-//            if (weight <= current_min) {
-//                current_min = weight;
-//                weighted_largest = pair.first;
-//                min_weight = pair.second;
-//            }
-//        }
-//        result.push_front(weighted_largest->key);
-//
-//        // Scale the weights
-//        auto s = data_port_coflow[bottlenecked][weighted_largest->job->id].d;
-//        weights.erase(weighted_largest);
-//        for (auto &pair : weights) {
-//            pair.second -=
-//                    (min_weight
-//                            * data_port_coflow[bottlenecked][pair.first->job->id].d
-//                            / s);
-//        }
-//    }
-//    result.push_front(weights.begin()->first->key);
-
+        EV_DEBUG << "bottlenecked port " << bottlenecked << endl;
+        // Select weighted largest job to schedule last
+        TensorKey weighted_largest;
+        auto current_min = DBL_MAX;
+        double min_weight = DBL_MAX;
+        for (auto &pair : weights) { // tensor_key -> weight
+            // scaled weight
+            auto weight = pair.second
+                    / data_port_coflow[bottlenecked][pair.first.job_id].d;
+            if (weight <= current_min) {
+                current_min = weight;
+                weighted_largest.layer = pair.first.layer;
+                weighted_largest.job_id = pair.first.job_id;
+                min_weight = pair.second;
+            }
+        }
+        // Scale the weights
+        auto s = data_port_coflow[bottlenecked][weighted_largest.job_id].d;
+        for (auto &pair : weights) {
+            pair.second -= (min_weight
+                    * data_port_coflow[bottlenecked][pair.first.job_id].d / s);
+        }
+#ifndef NDEBUG
+        ss << " jid " << weighted_largest.job_id << " layer "
+                << weighted_largest.layer << " weight " << current_min << " ->";
+#endif
+        result.push_front(weighted_largest);
+        weights.erase(weighted_largest);
+    }
+    // final one left
+    auto &tensor_key = weights.begin()->first;
+    result.push_front(tensor_key);
+#ifndef NDEBUG
+    ss << " jid " << tensor_key.job_id << " layer " << tensor_key.layer << endl;
+    EV_DEBUG << ss.str();
+#endif
 }
 
 void JobDispatcher::clean_resources_for_tensor_key(uint64_t jid,
-        uint64_t tensor_key) {
+        const TensorKey &tensor_key) {
     for (auto tor_id : switches_for_job[jid]) {
         ((Switch*) (getSimulation()->getModule(tor_id)))->clean_resources_for_tensor(
                 tensor_key);
@@ -190,13 +194,14 @@ bool JobDispatcher::accommodate(
 bool JobDispatcher::tryDispatchAJob() {
     auto job = job_scheduling->pick_a_job_to_execute(jobs);
     if (!job) {
+        EV_DEBUG << "can't pick a job to execute" << endl;
         return false;
+    } else {
+        EV_DEBUG << "selects and try to place job " << job->getJob_id() << endl;
     }
-
     auto placement = job_placement->place_job(job);
-
     if (placement.empty()) {
-        // can't satisfy placement
+        EV_DEBUG << "can't satisfy placement" << endl;
         return false;
     }
 
@@ -213,18 +218,19 @@ bool JobDispatcher::tryDispatchAJob() {
             switches.insert(switch_id);
         }
         if (workers_of_job.size() == 1) {
-            emit(jpSignal, 1); // single machine
+            emit(jobPlacementType, 1); // single machine
         } else if (workers_of_job.size() > 1 && switches.size() == 1) { // distributed single-rack
-            emit(jpSignal, 2);
+            emit(jobPlacementType, 2);
         } else { // workers_of_job.size() > 1 && switches.size() > 1 {// distrubted multi-racks
-            emit(jpSignal, 3);
+            emit(jobPlacementType, 3);
         }
     }
 
     job->setNum_workers_allocated(placement.size());
     job->setStart_time(simTime());
-    emit(jstSignal, simTime());
-    emit(jwtSignal, simTime() - job->getSubmit_time());
+    emit(jobStartTime, simTime());
+    EV_DEBUG << simTime() << " now submit " << job->getSubmit_time() << " job " << job->getJob_id() << endl;
+    emit(jobWaitTime, simTime() - job->getSubmit_time());
     unsigned rank = 0;
     hierarchy->setup_job(job, placement);
     for (auto pair : placement) {
@@ -246,11 +252,13 @@ void JobDispatcher::handleMessage(cMessage *msg) {
     auto job = (Job*) msg;
     if (job->getFinish_time() < 0) {
         // this is a newly submitted job
-        EV_DEBUG << "Received submitted job " << job->getJob_id() << " at "
-                        << simTime() << endl;
+        EV_DEBUG << "Received submitted job " << job->getJob_id()
+                        << " requiring " << job->getGpu() << " at " << simTime()
+                        << endl;
+        job->setSubmit_time(simTime());
         jobs[job->getJob_id()] = job; // saved as a local copy, don't delete
         job->setKind(0); // use kind as number of workers that finished the job
-        emit(jsmtSignal, job->getSubmit_time());
+        emit(jobSubmissionTime, job->getSubmit_time());
         while (tryDispatchAJob()) {
             // send jobs until nothing left or nothing can be placed
         }
@@ -265,7 +273,7 @@ void JobDispatcher::handleMessage(cMessage *msg) {
             // all workers finished
             EV_DEBUG << "Finished job " << job->getJob_id() << " at "
                             << simTime() << endl;
-            emit(jctSignal, simTime());
+            emit(jobCompletionTime, simTime() - job->getStart_time());
 
             auto jid = job->getJob_id();
             for (auto tor_id : switches_for_job[jid]) {

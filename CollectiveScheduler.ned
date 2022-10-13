@@ -14,6 +14,14 @@ simple Sincronia like ICollectiveScheduler
         input directin;
 }
 
+simple DeficitRoundRobin like ICollectiveScheduler
+{
+    parameters:
+        int chunk_size = default(262144);
+    gates:
+        input directin;
+}
+
 simple ByteScheduler like ICollectiveScheduler
 {
     parameters:

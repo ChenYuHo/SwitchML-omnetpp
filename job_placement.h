@@ -82,24 +82,35 @@ public:
             return counter;
         }
 
+        unsigned num_machines_with_free_gpus = 0;
+        for (const auto &pair : job_dispatcher->workers) {
+            auto wid = pair.first;
+            if (job_dispatcher->free_gpus[wid] > 0) {
+                num_machines_with_free_gpus++;
+            }
+        }
+
         switch (placement_type) {
-        case 1: { // distributed
+        case 3: {
             unsigned num_machines_with_free_gpus = 0;
+            std::unordered_set<int> tors_with_available_machines { };
             for (const auto &pair : job_dispatcher->workers) {
                 auto wid = pair.first;
                 if (job_dispatcher->free_gpus[wid] > 0) {
                     num_machines_with_free_gpus++;
+                    tors_with_available_machines.insert(
+                            job_dispatcher->tor_id_for_worker[wid]);
                 }
             }
-            if (num_machines_with_free_gpus > 1) { // must place distributed
+            if (tors_with_available_machines.size() > 1) { // must place multirack
                 do {
                     selected = sample(candidates, num_gpus_needed);
-                } while (!distributed_placement(selected));
+                } while (!multi_racks_placement(selected));
             }
             break;
         }
         case 2: { // single rack
-            std::unordered_map<int, unsigned> num_machines_with_free_gpus_in_tor { }; // tor_id -> free gpus
+            std::unordered_map<int, unsigned> num_machines_with_free_gpus_in_tor { };
             std::unordered_map<int, unsigned> free_gpus_in_tor { }; // tor_id -> free gpus
             std::unordered_map<int, std::vector<int>> candidates_for_tor { };
             for (const auto &pair : job_dispatcher->workers) {
@@ -135,24 +146,14 @@ public:
                 do {
                     selected = sample(candidate_workers, num_gpus_needed);
                 } while (!distributed_placement(selected));
-            }
+            } // else fall back to distributed ?
             break;
         }
-        case 3: {
-            unsigned num_machines_with_free_gpus = 0;
-            std::unordered_set<int> tors_with_available_machines { };
-            for (const auto &pair : job_dispatcher->workers) {
-                auto wid = pair.first;
-                if (job_dispatcher->free_gpus[wid] > 0) {
-                    num_machines_with_free_gpus++;
-                    tors_with_available_machines.insert(
-                            job_dispatcher->tor_id_for_worker[wid]);
-                }
-            }
-            if (tors_with_available_machines.size() > 1) { // must place multirack
+        case 1: { // distributed
+            if (num_machines_with_free_gpus > 1) { // must place distributed
                 do {
                     selected = sample(candidates, num_gpus_needed);
-                } while (!multi_racks_placement(selected));
+                } while (!distributed_placement(selected));
             }
             break;
         }
@@ -165,7 +166,7 @@ public:
         for (auto wid : selected) {
             counter[wid] += 1;
         }
-        if (!getEnvir()->isLoggingEnabled()) {
+        if (getEnvir()->isLoggingEnabled() && !counter.empty()) {
             EV_DEBUG << "\nPlacement:\n";
             for (auto pair : counter) {
                 EV_DEBUG << pair.first << "->" << pair.second << " ";
