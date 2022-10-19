@@ -1,7 +1,8 @@
-#include "hierarchy.h"
 #include "JobDispatcher.h"
 #include "SwitchML_m.h"
 #include <unordered_set>
+
+#include "Hierarchy.h"
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
 
@@ -43,9 +44,9 @@ void TwoLayers::setup_job(Job *job,
         setup->setTop_level(top_level);
         job_dispatcher->sendDirect(setup,
                 job_dispatcher->getSimulation()->getModule(tor_id), "directin");
-        EV_DEBUG
+        EV_DEBUG << "[TwoLayers]\t" << simTime()
                         << fmt::format(
-                                "ToR {} should receive {} num_updates (toplevel {}) for job {}\n",
+                                "\tToR {} should receive {} num_updates (toplevel {}) for job {}\n",
                                 tor_id, num_updates, top_level, job_id);
         setup_for_core->appendIds(tor_id);
     }
@@ -60,9 +61,9 @@ void TwoLayers::setup_job(Job *job,
     setup_for_core->setTop_level(true);
     setup_for_core->setKind(6);
     job_dispatcher->sendDirect(setup_for_core, core_switch, "directin");
-    EV_DEBUG
+    EV_DEBUG << "[TwoLayers]\t" << simTime()
                     << fmt::format(
-                            "Core {} should receive {} num_updates (toplevel {}) for job {}\n",
+                            "\tCore {} should receive {} num_updates (toplevel {}) for job {}\n",
                             core_switch_id, setup_for_core->getIdsArraySize(),
                             true, job_id);
 }

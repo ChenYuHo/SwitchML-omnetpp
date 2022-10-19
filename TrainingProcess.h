@@ -31,6 +31,7 @@ private:
     void finish() override;
     std::queue<simtime_t> iter_start;
     simtime_t gpu_start_idle_time;
+    simtime_t last_idle_times_start;
 
     void initialize() override;
     void handleMessage(cMessage *msg) override;
@@ -45,13 +46,15 @@ private:
 
     simsignal_t fullIterTime;
     simsignal_t contiguousIterTime;
-    simsignal_t minIdleTime;
-    simsignal_t minIdleTimeWu;
+//    simsignal_t minIdleTime;
+//    simsignal_t minIdleTimeWu;
     simsignal_t idleTime;
     simsignal_t idleTimeWu;
     simsignal_t commTime;
     simsignal_t realCommTime;
     simsignal_t workerJobCompletionTime;
+
+    bool print = false;
 };
 
 #endif /* TrainingProcess_H_ */

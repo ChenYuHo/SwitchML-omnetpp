@@ -17,19 +17,19 @@ network TwoLayers
         @statistic[avgBandwidth](source=sum(packetBits(pktOut))/sum(commTime)/1000000000; record=last);
         // @statistic[realBandwidth](source=sum(packetBits(pktOut))/sum(realCommTime)/1000000000; record=last);
 
-        @statistic[totalMinIdleTimeWu](source=minIdleTimeWu; record=sum);
-        @statistic[totalMinIdleTime](source=minIdleTime; record=sum);
+//        @statistic[totalMinIdleTimeWu](source=minIdleTimeWu; record=sum);
+//        @statistic[totalMinIdleTime](source=minIdleTime; record=sum);
         @statistic[totalIdleTimeWu](source=idleTimeWu; record=sum);
         @statistic[totalIdleTime](source=idleTime; record=sum); // waiting time for each fp's dependent (bp and wu) updates
         @statistic[totalWorkerJobCompletionTime](source=workerJobCompletionTime; record=sum); // per worker
 
         // gpuUtilization is 1 - (totalIdleTime / totalWorkerJobCompletionTime)
-        @statistic[gpuIdleFrac](source=sum(idleTime)/sum(workerJobCompletionTime); record=last);
-        @statistic[gpuIdleFracWu](source=sum(idleTimeWu)/sum(workerJobCompletionTime); record=last);
+        @statistic[gpuUtilization](source=1-sum(idleTime)/sum(workerJobCompletionTime); record=last);
+        @statistic[gpuUtilizationWu](source=1-sum(idleTimeWu)/sum(workerJobCompletionTime); record=last);
 
         // scheduling efficiency is sum of min idle time / sum of idle time
-        @statistic[schedulingEfficiency](source=sum(minIdleTime)/sum(idleTime); record=last); // sum of min idle time / sum of idle time
-        @statistic[schedulingEfficiencyWu](source=sum(minIdleTimeWu)/sum(idleTimeWu); record=last);
+//        @statistic[schedulingEfficiency](source=sum(minIdleTime)/sum(idleTime); record=last); // sum of min idle time / sum of idle time
+//        @statistic[schedulingEfficiencyWu](source=sum(minIdleTimeWu)/sum(idleTimeWu); record=last);
 
         @statistic[jobCompletionTime](record=stats,vector); // from first worker start to last worker finish for a job
         @statistic[jobSubmissionTime](record=vector);

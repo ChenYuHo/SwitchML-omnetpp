@@ -10,7 +10,7 @@ using namespace omnetpp;
 class ByteScheduler: public cSimpleModule {
 private:
     uint64_t chunk_size;
-    std::unordered_map<TensorKey, uint64_t> original_size { };
+    std::unordered_map<TensorKey, uint64_t> remaining_sizes { };
     std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> requests_of_key { };
     typedef std::pair<uint64_t, uint64_t> layer_tkey_pair;
     std::unordered_map<uint64_t, std::priority_queue<TensorKey>> queues_for_job { };
@@ -33,7 +33,7 @@ void ByteScheduler::initialize() {
 
 void ByteScheduler::clean_resources_for_tensor(const TensorKey &tensor_key) {
     requests_of_key.erase(tensor_key);
-    original_size.erase(tensor_key);
+    remaining_sizes.erase(tensor_key);
 }
 
 void ByteScheduler::clean_resources_for_job(uint64_t jid) {
@@ -56,30 +56,33 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
     auto &tensor_key = queue.top();
     auto &requests = requests_of_key[tensor_key];
     auto next_chunk_id = requests[0]->getChunk_id() + 1;
-    bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
+    auto n_chunks = requests[0]->getNum_chunks();
+    bool last_chunk = next_chunk_id == n_chunks;
     if (last_chunk) {
         for (auto &req : requests) {
-            req->setSize(original_size[tensor_key] % chunk_size);
+            req->setSize(remaining_sizes[tensor_key]);
         }
     }
+    EV_DEBUG << "ByteScheduler notifies Workers ";
     for (auto &req : requests) {
-        auto &tensor_key = req->getTensor_key();
-        EV_DEBUG
-                        << fmt::format(
-                                "ByteScheduler notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
-                                req->getWorker_id(), tensor_key.job_id,
-                                tensor_key.layer, next_chunk_id,
-                                req->getNum_chunks(), req->getSize());
+        EV_DEBUG << req->getWorker_id() << " ";
         sendDirect(req->dup(), getSimulation()->getModule(req->getWorker_id()),
                 "directin");
         req->setChunk_id(next_chunk_id);
     }
+    EV_DEBUG << "to start Collective Operation for Job " << tensor_key.job_id
+                    << " layer " << tensor_key.layer << ", chunk "
+                    << next_chunk_id << "/" << n_chunks << " size "
+                    << requests[0]->getSize() << " at " << simTime() << endl;
     num_workers_of_active_job_id[jid] = requests.size();
     if (last_chunk) {
+        remaining_sizes[tensor_key] = 0;
         for (auto &req : requests) {
             delete req;
         }
         queue.pop();
+    } else {
+        remaining_sizes[tensor_key] -= chunk_size;
     }
 }
 
@@ -91,14 +94,13 @@ void ByteScheduler::handleMessage(cMessage *msg) {
         auto &tensor_key = request->getTensor_key();
         auto &requests = requests_of_key[tensor_key];
         requests.push_back(request);
-        EV_DEBUG << requests.size() << " "
-                        << request->getNum_workers_allocated() << endl;
         if (requests.size() == request->getNum_workers_allocated()) {
             auto size = request->getSize();
-            original_size[tensor_key] = size;
+            remaining_sizes[tensor_key] = size;
             auto num_chunks = size / chunk_size + (size % chunk_size ? 1 : 0);
+            auto next_size = num_chunks == 1 ? size : chunk_size;
             for (auto &req : requests) {
-                req->setSize(chunk_size);
+                req->setSize(next_size);
                 req->setNum_chunks(num_chunks);
             }
             // layers nearer the front gets higher priority
@@ -115,7 +117,7 @@ void ByteScheduler::handleMessage(cMessage *msg) {
         auto jid = tensor_key.job_id;
         num_workers_of_active_job_id[jid] -= 1;
         if (num_workers_of_active_job_id[jid] == 0) {
-            EV_DEBUG << "[ByteScheduler] ]Job " << jid << " layer "
+            EV_DEBUG << "ByteScheduler Job " << jid << " layer "
                             << tensor_key.layer << " done\n";
             busy[jid] = false;
             if (req->getCompleted()) {

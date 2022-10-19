@@ -1,10 +1,22 @@
 moduleinterface IJobSubmitter
 {
     parameters:
-        int max_jobs_to_submit;
-        int shrink_iter_factor;
-        int gpu_scale_factor;
-        bool submit_all_when_start;
+//        int max_jobs_to_submit;
+//        int shrink_iter_factor;
+//        int gpu_scale_factor;
+//        bool submit_all_when_start;
+    gates:
+        input directin;
+        output jobout;
+}
+
+simple NJobSubmitter like IJobSubmitter
+{
+    parameters:
+        int num_jobs = default(1);
+        int num_gpus_per_job = default(8);
+        int iters = default(1);
+        string model = default("resnet50");
     gates:
         input directin;
         output jobout;

@@ -1,5 +1,5 @@
-#ifndef JOB_PLACEMENT_H_
-#define JOB_PLACEMENT_H_
+#ifndef JOBPLACEMENT_H_
+#define JOBPLACEMENT_H_
 #include <omnetpp.h>
 #include "JobDispatcher.h"
 
@@ -60,9 +60,17 @@ public:
     }
 
     std::unordered_map<int, unsigned> place_job(const Job *job) override {
+        std::unordered_map<int, unsigned> counter { };
+        if (placement_type == 7) {
+            auto &pair = *(job_dispatcher->workers_for_tor.begin());
+            for (auto wid : pair.second) {
+                counter[wid] = 1;
+            }
+            return counter;
+        }
+
         std::vector<int> candidates { };
         std::vector<int> selected { };
-        std::unordered_map<int, unsigned> counter { };
         unsigned num_gpus_needed = job->getGpu();
 
         for (const auto &pair : job_dispatcher->workers) {
@@ -91,6 +99,7 @@ public:
         }
 
         switch (placement_type) {
+        case 6:
         case 3: {
             unsigned num_machines_with_free_gpus = 0;
             std::unordered_set<int> tors_with_available_machines { };
@@ -106,9 +115,14 @@ public:
                 do {
                     selected = sample(candidates, num_gpus_needed);
                 } while (!multi_racks_placement(selected));
-            }
-            break;
+                break;
+            } else if (placement_type == 3) {
+                // no placement found
+                break;
+            } // try place single rack
+            EV_DEBUG << "[JobPlacement]\t" << simTime() << "\tcan't place multi rack, try single rack" << endl;
         }
+        case 5:
         case 2: { // single rack
             std::unordered_map<int, unsigned> num_machines_with_free_gpus_in_tor { };
             std::unordered_map<int, unsigned> free_gpus_in_tor { }; // tor_id -> free gpus
@@ -146,16 +160,25 @@ public:
                 do {
                     selected = sample(candidate_workers, num_gpus_needed);
                 } while (!distributed_placement(selected));
-            } // else fall back to distributed ?
-            break;
+                break;
+            } else if (placement_type == 2) {
+                // no placement found
+                break;
+            } // try distributed
+            EV_DEBUG << "[JobPlacement]\t" << simTime() << "\tcan't place single rack, try distributed" << endl;
         }
+        case 4:
         case 1: { // distributed
             if (num_machines_with_free_gpus > 1) { // must place distributed
                 do {
                     selected = sample(candidates, num_gpus_needed);
                 } while (!distributed_placement(selected));
-            }
-            break;
+                break;
+            } else if (placement_type == 1) {
+                // no placement found
+                break;
+            } // fallback to random selection
+            EV_DEBUG << "[JobPlacement]\t" << simTime() << "\tfallback to random selection" << endl;
         }
         case 0:
         default:
@@ -167,7 +190,7 @@ public:
             counter[wid] += 1;
         }
         if (getEnvir()->isLoggingEnabled() && !counter.empty()) {
-            EV_DEBUG << "\nPlacement:\n";
+            EV_DEBUG << "[JobPlacement]\t" << simTime() << "\tPlacement: ";
             for (auto pair : counter) {
                 EV_DEBUG << pair.first << "->" << pair.second << " ";
             }
@@ -177,4 +200,4 @@ public:
     }
 };
 
-#endif /* JOB_PLACEMENT_H_ */
+#endif /* JOBPLACEMENT_H_ */

@@ -10,8 +10,8 @@ void TrainingProcess::initialize() {
     contiguousIterTime = registerSignal("contiguousIterTime");
     idleTime = registerSignal("idleTime");
     idleTimeWu = registerSignal("idleTimeWu");
-    minIdleTime = registerSignal("minIdleTime");
-    minIdleTimeWu = registerSignal("minIdleTimeWu");
+//    minIdleTime = registerSignal("minIdleTime");
+//    minIdleTimeWu = registerSignal("minIdleTimeWu");
     commTime = registerSignal("commTime");
     realCommTime = registerSignal("realCommTime");
     workerJobCompletionTime = registerSignal("workerJobCompletionTime");
@@ -19,15 +19,17 @@ void TrainingProcess::initialize() {
             uint64_t(
                     getParentModule()->gate("port$o")->getChannel()->par(
                             "datarate").doubleValue()/* bps */) / 1000000000;
+
 }
 
 void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
     if (distributed) {
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} start comm layer {} ",
-                                wid, rank, jid, iter, layer) << simTime()
-                        << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} start comm layer {} ",
+                                    wid, rank, jid, iter, layer) << simTime()
+                            << endl;
         auto size = model_sizes[model][layer];
         auto req = new CollectiveOperationRequest();
         req->setKind(0);
@@ -42,18 +44,20 @@ void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
         req->setTensor_key(tensor_key);
         req->setNum_workers_allocated(num_workers_allocated);
         if (collective_scheduler) {
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} iter {} enqueue collective operation for layer {} size {} ",
-                                    wid, rank, jid, iter, layer, size)
-                            << simTime() << endl;
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} iter {} enqueue collective operation for layer {} size {} ",
+                                        wid, rank, jid, iter, layer, size)
+                                << " at " << simTime() << endl;
             sendDirect(req, collective_scheduler, "directin");
         } else { // send directly to Worker
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} iter {} TrainingProcess start collective operation for layer {} size {} ",
-                                    wid, rank, jid, iter, layer, size)
-                            << simTime() << endl;
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} iter {} TrainingProcess start collective operation for layer {} size {} ",
+                                        wid, rank, jid, iter, layer, size)
+                                << " at " << simTime() << endl;
             sendDirect(req, getParentModule(), "directin");
         }
 
@@ -64,11 +68,12 @@ void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
         tensor_key.job_id = jid;
         req->setTensor_key(tensor_key);
         scheduleAfter(wu_times[model][layer], req);
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} start wu layer {} ",
-                                wid, rank, jid, iter, layer) << simTime()
-                        << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} start wu layer {} ",
+                                    wid, rank, jid, iter, layer) << simTime()
+                            << endl;
         recordIdleTimeIfAny();
     }
 }
@@ -92,12 +97,19 @@ void insert_simtime(std::vector<simtime_t> &vec, const char *s,
 
 void TrainingProcess::markIdleStart() {
     gpu_start_idle_time = simTime();
+    if (print)
+        EV_DEBUG << "[TrainingProcess]\t" << simTime() << "\tstart idleTimeWu "
+                        << simTime() << endl;
 }
 
 void TrainingProcess::recordIdleTimeIfAny() {
-    if (!gpu_start_idle_time.isZero()) {
+    if (!gpu_start_idle_time.isZero() && simTime() > gpu_start_idle_time) {
         emit(idleTimeWu, simTime() - gpu_start_idle_time);
-        gpu_start_idle_time = 0;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << "\trecord idleTimeWu " << simTime() << " - "
+                            << gpu_start_idle_time << endl;
+        gpu_start_idle_time = SimTime::ZERO;
     }
 }
 
@@ -111,13 +123,8 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         job_dispatcher = getSimulation()->findModuleByPath(
                 "<root>.job_dispatcher");
         worker = getParentModule();
-        if (collective_scheduler) {
-            EV_DEBUG << "Collective Scheduler is "
-                            << collective_scheduler->getFullName() << endl;
-        } else
-            EV_DEBUG << "No Collective Scheduler" << endl;
-
         rank = job->getRank();
+        print = !(par("print_only_rank0").boolValue() && rank);
         jid = job->getJob_id();
         wid = worker->getId();
         iters = job->getIters();
@@ -143,11 +150,10 @@ void TrainingProcess::handleMessage(cMessage *msg) {
                     all_fps_and_last_bp_times[model] += fp;
                     all_fps_and_bps_times[model] += fp;
                 }
+                all_fps_and_last_bp_times[model] += bp_times[model].back();
                 for (const auto &bp : bp_times[model]) {
                     all_fps_and_bps_times[model] += bp;
                 }
-                all_fps_and_last_bp_times[model] +=
-                        bp_times[model][bp_times[model].size() - 1];
                 min_wait_times[model] = min_wait_time(model, false, datarate);
                 min_wait_times_wu[model] = min_wait_time(model, true, datarate);
                 for (const auto &mwt : min_wait_times[model]) {
@@ -182,11 +188,12 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         can_do_fp.resize(n_layers[model], 1); // for first iter, only require one fp ack ("wu" already done)
         layer_done.resize(n_layers[model], false);
         real_comm_times.resize(n_layers[model], 0);
-        EV_DEBUG
-                        << fmt::format(
-                                "Start {}Job {} as rank {} iters {} num_layers {}",
-                                distributed ? "distributed " : "", jid, rank,
-                                iters, n_layers[model]) << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tStart {}Job {} as rank {} iters {} num_layers {}",
+                                    distributed ? "distributed " : "", jid,
+                                    rank, iters, n_layers[model]) << endl;
         auto ins = new Instruction("fp", 20);
         scheduleAt(simTime(), ins);
         break;
@@ -198,11 +205,12 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         // FP layer "layer-1" (or BP layer 0 if layer==0) done, try to start layer "layer"
         if (layer == 0 && insIter > 0) {
             // last bp layer
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} iter {} done bp layer {} ",
-                                    wid, rank, jid, insIter, layer) << simTime()
-                            << endl;
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} iter {} done bp layer {} ",
+                                        wid, rank, jid, insIter, layer)
+                                << simTime() << endl;
             markIdleStart();
             if (insIter == iters) {
                 // last bp is done, only last comm and wu left for this job
@@ -213,29 +221,32 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         can_do_fp[layer] += 1;
 
         if (can_do_fp[layer] < 2) {
-            EV_DEBUG << "can't do fp " << layer << " iter " << insIter << endl;
+//            if (print) EV_DEBUG << "[TrainingProcess]\t" << simTime() << "\tcan't do fp "
+//                            << layer << " iter " << insIter << endl;
             delete ins;
             break;
-        } else {
-            EV_DEBUG << "can do fp " << layer << " iter " << insIter << endl;
+//        } else {
+//            if (print) EV_DEBUG << "[TrainingProcess]\t" << simTime() << "\tcan do fp "
+//                            << layer << " iter " << insIter << endl;
         }
         can_do_fp[layer] = 0;
 
         auto next_layer = layer + 1;
         if (layer == 0) {
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} start iter {} ",
-                                    wid, rank, jid, insIter) << simTime()
-                            << endl;
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} start iter {}",
+                                        wid, rank, jid, insIter) << endl;
 
             iter_start.push(simTime());
         } else {
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} iter {} done fp layer {} ",
-                                    wid, rank, jid, insIter, layer - 1)
-                            << simTime() << endl;
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} iter {} done fp layer {}",
+                                        wid, rank, jid, insIter, layer - 1)
+                                << endl;
             markIdleStart();
         }
 
@@ -246,11 +257,11 @@ void TrainingProcess::handleMessage(cMessage *msg) {
             ins->setLayer(next_layer);
         }
         scheduleAfter(fp_times[model][layer], ins);
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} start fp layer {} ",
-                                wid, rank, jid, insIter, layer) << simTime()
-                        << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} start fp layer {}",
+                                    wid, rank, jid, insIter, layer) << endl;
         recordIdleTimeIfAny();
         break;
     }
@@ -260,19 +271,20 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         bool first_bp = layer == n_layers[model] - 1;
         if (first_bp) {
             // just done last fp layer
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} iter {} done fp layer {} ",
-                                    wid, rank, jid, iter, layer) << simTime()
-                            << endl;
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} iter {} done fp layer {}",
+                                        wid, rank, jid, iter, layer) << endl;
             markIdleStart();
         } else {
             // just done a bp layer
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} iter {} done bp layer {} ",
-                                    wid, rank, jid, iter, layer + 1)
-                            << simTime() << endl;
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} iter {} done bp layer {}",
+                                        wid, rank, jid, iter, layer + 1)
+                                << endl;
             markIdleStart();
             // start or enqueue collective of layer "layer+1"
             auto comm_layer = layer + 1;
@@ -290,11 +302,11 @@ void TrainingProcess::handleMessage(cMessage *msg) {
             ins->setLayer(layer - 1);
         }
         scheduleAfter(bp_times[model][layer], ins);
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} start bp layer {} ",
-                                wid, rank, jid, iter, layer) << simTime()
-                        << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} start bp layer {}",
+                                    wid, rank, jid, iter, layer) << endl;
         recordIdleTimeIfAny();
         break;
     }
@@ -302,11 +314,11 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         // last bp (layer 0)
         auto ins = (Instruction*) msg;
         auto insIter = ins->getIter();
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} done bp layer {} ",
-                                wid, rank, jid, insIter, 0) << simTime()
-                        << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} done bp layer {}",
+                                    wid, rank, jid, insIter, 0) << endl;
         markIdleStart();
         startComm(0, insIter);
         delete ins;
@@ -318,37 +330,45 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         auto req = (CollectiveOperationRequest*) msg;
         auto layer = req->getTensor_key().layer;
         scheduleAfter(wu_times[model][layer], req);
+        if (print)
+            EV_DEBUG << "done collective for " << simTime() - req->getStart()
+                            << endl;
 
         real_comm_times[layer] += (simTime() - req->getStart());
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} done comm layer {} ",
-                                wid, rank, jid, iter, layer) << simTime()
-                        << endl;
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} start wu layer {} ",
-                                wid, rank, jid, iter, layer) << simTime()
-                        << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} done comm layer {}",
+                                    wid, rank, jid, iter, layer) << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} start wu layer {}",
+                                    wid, rank, jid, iter, layer) << endl;
         recordIdleTimeIfAny();
         break;
     }
     case 4: {
         auto req = (CollectiveOperationRequest*) msg;
         auto layer = req->getTensor_key().layer;
-        EV_DEBUG
-                        << fmt::format(
-                                "Worker {} Rank {} Job {} iter {} done wu layer {} ",
-                                wid, rank, jid, iter, layer) << simTime()
-                        << endl;
+        if (print)
+            EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                            << fmt::format(
+                                    "\tWorker {} Rank {} Job {} iter {} done wu layer {}",
+                                    wid, rank, jid, iter, layer) << endl;
         markIdleStart();
         if (layer == 0) {
             // time when next iter fp will start
             auto contiguous_iter_time = simTime() - iter_start.front();
             emit(contiguousIterTime, contiguous_iter_time);
             emit(idleTime, contiguous_iter_time - all_fps_and_bps_times[model]);
-            emit(minIdleTime, min_wait_time_sums[model]);
-            emit(minIdleTimeWu, min_wait_time_sums_wu[model]);
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << "\trecord idleTime " << contiguous_iter_time
+                                << " - " << all_fps_and_bps_times[model]
+                                << endl;
+//            emit(minIdleTime, min_wait_time_sums[model]);
+//            emit(minIdleTimeWu, min_wait_time_sums_wu[model]);
         }
         layer_done[layer] = true;
         if (iter + 1 < iters) {
@@ -357,16 +377,19 @@ void TrainingProcess::handleMessage(cMessage *msg) {
             ins->setLayer(layer);
             ins->setIter(iter + 1);
             scheduleAt(simTime(), ins);
+        } else if (layer == 0) {
+            // mark simtime for the final comm and wu times
+            last_idle_times_start = simTime();
         }
         if (std::all_of(layer_done.cbegin(), layer_done.cend(), [](bool done) {
             return done;
         })) {
-            // all layers done, iter ends
-            EV_DEBUG
-                            << fmt::format(
-                                    "Worker {} Rank {} Job {} done iter {} layer {} ",
-                                    wid, rank, jid, iter, layer) << simTime()
-                            << endl;
+            // all wu layers done, iter ends
+            if (print)
+                EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                << fmt::format(
+                                        "\tWorker {} Rank {} Job {} done iter {} layer {}",
+                                        wid, rank, jid, iter, layer) << endl;
             iter++;
             std::fill(layer_done.begin(), layer_done.end(), false);
             auto iter_time = simTime() - iter_start.front();
@@ -383,15 +406,25 @@ void TrainingProcess::handleMessage(cMessage *msg) {
             std::fill(real_comm_times.begin(), real_comm_times.end(), 0);
 //            emit(delayTime, comm_time - real_comm_sum);
             if (iter == iters) {
-                EV_DEBUG
-                                << fmt::format(
-                                        "Worker {} Rank {} Job {} iter {} done job {} ",
-                                        wid, rank, jid, iter, jid) << simTime()
-                                << endl;
+                if (print)
+                    EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                    << fmt::format(
+                                            "\tWorker {} Rank {} Job {} iter {} done job {}",
+                                            wid, rank, jid, iter, jid) << endl;
 
                 job->setFinish_time(simTime());
                 job->setKind(5);
                 emit(workerJobCompletionTime, simTime() - job->getStart_time());
+
+                // last idle times includes comm and wus (for 1+ layers) for last iter
+                if (simTime() > last_idle_times_start) {
+                    emit(idleTime, simTime() - last_idle_times_start);
+                    if (print)
+                        EV_DEBUG << "[TrainingProcess]\t" << simTime()
+                                        << "\trecord idleTime " << simTime()
+                                        << " - " << last_idle_times_start
+                                        << endl;
+                }
                 sendDirect(job, getParentModule(), "directin");
             }
         }

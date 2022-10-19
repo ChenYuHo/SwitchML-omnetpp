@@ -8,8 +8,6 @@ using namespace omnetpp;
 Define_Module(Worker);
 
 void Worker::initialize() {
-//    testSignal = registerSignal("testSignal");
-//    emit(testSignal, true);
     gbps = int64_t(
             gate("port$o")->getChannel()->par("datarate").doubleValue() / 1e9);
     EV_DEBUG << "gbps " << gbps << endl;
@@ -80,7 +78,8 @@ void Worker::startTransmitting(cMessage *pkt) {
 }
 
 void Worker::notifyCollectiveOperationDone(CollectiveOperationRequest *req) {
-    EV_DEBUG << fmt::format("Worker {} done a Collective Operation\n", getId());
+    EV_DEBUG << fmt::format("Worker {} done a Collective Operation", getId())
+                    << " at " << simTime() << endl;
     req->setKind(2);
     auto &tensor_key = req->getTensor_key();
     auto jid = tensor_key.job_id;
@@ -124,13 +123,13 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
                                 "Worker {} startOneCollectiveOperation for job {} grad_size {}, expect {} pkts, queue still has {} reqs",
                                 getId(), job_id, grad_size, num_pkts_expected,
                                 collective_operation_requests_for_job[job_id].getLength())
-                        << endl;
+                        << " at " << simTime() << endl;
         for (uint64_t slot = 0; slot < num_slots; ++slot) {
             auto offset = slot * num_updates;
             if (offset >= grad_size)
                 break;
             auto p = new SwitchMLPacket();
-            p->setByteLength(MTU);
+            p->setBitLength(MTU);
             p->setFrom_id(getId());
             p->setSlot(slot);
             p->setVer(0);
@@ -194,8 +193,6 @@ void Worker::handleMessage(cMessage *msg) {
                     this);
             sendDirect(msg, mod, "directin");
             training_process_for_job[job->getJob_id()] = mod;
-            EV_DEBUG << "Worker " << getId() << " Start Server Process for Job "
-                            << job->getJob_id() << endl;
             break;
         }
         case 5: { // finished job from TrainingProcess

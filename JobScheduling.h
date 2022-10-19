@@ -1,5 +1,5 @@
-#ifndef JOB_SCHEDULING_H_
-#define JOB_SCHEDULING_H_
+#ifndef JOBSCHEDULING_H_
+#define JOBSCHEDULING_H_
 
 class Job;
 
@@ -21,4 +21,4 @@ public:
     }
 };
 
-#endif /* JOB_SCHEDULING_H_ */
+#endif /* JOBSCHEDULING_H_ */

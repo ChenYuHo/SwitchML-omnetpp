@@ -2,9 +2,9 @@
 #include "JobDispatcher.h"
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
-#include "hierarchy.h"
-#include "job_scheduling.h"
-#include "job_placement.h"
+#include "Hierarchy.h"
+#include "JobScheduling.h"
+#include "JobPlacement.h"
 #include "Switch.h"
 
 using namespace omnetpp;
@@ -15,6 +15,12 @@ void JobDispatcher::initialize(int stage) {
     if (stage == 0) {
         collective_scheduler = getSimulation()->findModuleByPath(
                 "<root>.collective_scheduler");
+        if (collective_scheduler) {
+            EV_INFO << "Collective Scheduler is "
+                           << collective_scheduler->getFullName() << endl;
+        } else {
+            EV_INFO << "No Collective Scheduler" << endl;
+        }
         switch_ports = getParentModule()->par("switch_ports");
         n_workers = getParentModule()->par("n_workers");
         std::string h = par("hierarchy");
@@ -40,6 +46,14 @@ void JobDispatcher::initialize(int stage) {
             job_placement = new Random(getRNG(0), this, 2);
         } else if (p == "random_multiracks") {
             job_placement = new Random(getRNG(0), this, 3);
+        } else if (p == "random_distributed_fallback") { // single or multi rack
+            job_placement = new Random(getRNG(0), this, 4);
+        } else if (p == "random_singlerack_fallback") {
+            job_placement = new Random(getRNG(0), this, 5);
+        } else if (p == "random_multiracks_fallback") {
+            job_placement = new Random(getRNG(0), this, 6);
+        } else if (p == "two_jobs") {
+            job_placement = new Random(getRNG(0), this, 7);
         } else {
             EV_FATAL << "Unexpected Job Placement: " << p << endl;
         }
@@ -53,7 +67,9 @@ void JobDispatcher::initialize(int stage) {
         for (int i = 0; i < n_workers; ++i) {
             auto wid = getParentModule()->findSubmodule("workers", i);
             auto worker = (Worker*) getSimulation()->getModule(wid);
-            tor_id_for_worker[wid] = worker->tor_id();
+            auto tor_id = worker->tor_id();
+            tor_id_for_worker[wid] = tor_id;
+            workers_for_tor[tor_id].push_back(wid);
             workers[wid] = worker;
             free_gpus[wid] = worker->par("num_gpus");
         }
@@ -156,7 +172,7 @@ void JobDispatcher::clean_resources_for_tensor_key(uint64_t jid,
 
 bool JobDispatcher::accommodate(
         const std::unordered_map<uint64_t, unsigned> &num_workers_of_active_job_id,
-        uint64_t jid_to_add) {
+        uint64_t jid_to_add, bool exclusive) {
     auto active_switch_ids = std::unordered_set<int> { };
     for (auto &pair : num_workers_of_active_job_id) {
         auto jid = pair.first;
@@ -168,40 +184,48 @@ bool JobDispatcher::accommodate(
         if (active_switch_ids.find(switch_id) != active_switch_ids.end()) {
             // found
             return false;
+        } else if (!exclusive) {
+            // idle switch found
+            return true;
         }
     }
+    // none found
     return true;
 }
 
-bool JobDispatcher::accommodate(
-        const std::unordered_set<uint64_t> &existing_jids,
-        uint64_t jid_to_add) {
-    auto active_switch_ids = std::unordered_set<int> { };
-    for (auto jid : existing_jids) {
-        for (auto switch_id : switches_for_job[jid]) {
-            active_switch_ids.insert(switch_id);
-        }
-    }
-    for (auto switch_id : switches_for_job[jid_to_add]) {
-        if (active_switch_ids.find(switch_id) != active_switch_ids.end()) {
-            // found
-            return false;
-        }
-    }
-    return true;
-}
+//bool JobDispatcher::accommodate(
+//        const std::unordered_set<uint64_t> &existing_jids,
+//        uint64_t jid_to_add) {
+//    auto active_switch_ids = std::unordered_set<int> { };
+//    for (auto jid : existing_jids) {
+//        for (auto switch_id : switches_for_job[jid]) {
+//            active_switch_ids.insert(switch_id);
+//        }
+//    }
+//    for (auto switch_id : switches_for_job[jid_to_add]) {
+//        if (active_switch_ids.find(switch_id) != active_switch_ids.end()) {
+//            // found
+//            return false;
+//        }
+//    }
+//    return true;
+//}
 
 bool JobDispatcher::tryDispatchAJob() {
     auto job = job_scheduling->pick_a_job_to_execute(jobs);
     if (!job) {
-        EV_DEBUG << "can't pick a job to execute" << endl;
+        EV_DEBUG << "[JobDispatcher]\t" << simTime()
+                        << "\tcan't pick a job to execute" << endl;
         return false;
     } else {
-        EV_DEBUG << "selects and try to place job " << job->getJob_id() << endl;
+        EV_DEBUG << "[JobDispatcher]\t" << simTime()
+                        << "\tselects and tries to place job "
+                        << job->getJob_id() << endl;
     }
     auto placement = job_placement->place_job(job);
     if (placement.empty()) {
-        EV_DEBUG << "can't satisfy placement" << endl;
+        EV_DEBUG << "[JobDispatcher]\t" << simTime()
+                        << "\tcan't satisfy placement" << endl;
         return false;
     }
 
@@ -229,14 +253,15 @@ bool JobDispatcher::tryDispatchAJob() {
     job->setNum_workers_allocated(placement.size());
     job->setStart_time(simTime());
     emit(jobStartTime, simTime());
-    EV_DEBUG << simTime() << " now submit " << job->getSubmit_time() << " job " << job->getJob_id() << endl;
+    EV_DEBUG << "[JobDispatcher]\t" << simTime() << "\tstarting job "
+                    << job->getJob_id() << " at " << simTime()
+                    << " submitted at " << job->getSubmit_time() << endl;
     emit(jobWaitTime, simTime() - job->getSubmit_time());
     unsigned rank = 0;
     hierarchy->setup_job(job, placement);
     for (auto pair : placement) {
         auto wid = pair.first;
         auto gpus = pair.second;
-        EV_DEBUG << "Use " << gpus << " GPUs of Worker " << wid << endl;
         free_gpus[wid] -= gpus;
         auto dup = job->dup();
         dup->setKind(3); // for workers to identify new job arrival
@@ -252,9 +277,9 @@ void JobDispatcher::handleMessage(cMessage *msg) {
     auto job = (Job*) msg;
     if (job->getFinish_time() < 0) {
         // this is a newly submitted job
-        EV_DEBUG << "Received submitted job " << job->getJob_id()
-                        << " requiring " << job->getGpu() << " at " << simTime()
-                        << endl;
+        EV_DEBUG << "[JobDispatcher]\t" << simTime()
+                        << "\tReceived submitted job " << job->getJob_id()
+                        << " requiring " << job->getGpu() << " GPUS" << endl;
         job->setSubmit_time(simTime());
         jobs[job->getJob_id()] = job; // saved as a local copy, don't delete
         job->setKind(0); // use kind as number of workers that finished the job

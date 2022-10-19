@@ -34,11 +34,13 @@ private:
     unsigned StartCollectiveOperations();
     std::deque<TensorKey> pending_tensors { };
     std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { }; // only one will be active
+    bool exclusive;
 };
 
 Define_Module(DeficitRoundRobin);
 
 void DeficitRoundRobin::initialize() {
+    exclusive = par("exclusive");
     chunk_size = par("chunk_size");
     job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
 }
@@ -102,7 +104,7 @@ unsigned DeficitRoundRobin::StartCollectiveOperations() {
             auto &tensor_key = pq.top();
             auto &requests = requests_of_key[tensor_key];
             if (job_dispatcher->accommodate(num_workers_of_active_job_id,
-                    jid_to_add)) {
+                    jid_to_add, exclusive)) {
                 auto this_size = std::min(remaining_sizes[tensor_key],
                         chunk_size);
                 if (this_size <= last_size) {

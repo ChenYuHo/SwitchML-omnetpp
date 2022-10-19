@@ -18,8 +18,9 @@ class TwoLayers;
 class JobDispatcher: public cSimpleModule {
 public:
     ~JobDispatcher();
-    bool accommodate(const std::unordered_set<uint64_t>&, uint64_t);
-    bool accommodate(const std::unordered_map<uint64_t, unsigned>&, uint64_t);
+//    bool accommodate(const std::unordered_set<uint64_t>&, uint64_t);
+    bool accommodate(const std::unordered_map<uint64_t, unsigned>&, uint64_t,
+            bool = true);
     void clean_resources_for_tensor_key(uint64_t, const TensorKey&);
     void bssi(std::deque<TensorKey>&, std::unordered_map<TensorKey, double>,
             const std::unordered_map<TensorKey, uint64_t>&);
@@ -37,6 +38,7 @@ private:
     std::unordered_map<uint64_t, std::unordered_set<int>> workers_for_job { };
     std::unordered_map<uint64_t, std::unordered_set<int>> switches_for_job { };
     std::unordered_map<int, Worker*> workers { };
+    std::unordered_map<int, std::vector<int>> workers_for_tor { };
 //    std::unordered_map<int, Switch*> tors { };
     std::unordered_map<int, int> tor_id_for_worker { };
     std::unordered_map<int, unsigned> free_gpus { }; // worker id -> free gpus
