@@ -37,7 +37,7 @@ void Switch::clean_resources_for_job(uint64_t jid) {
 void Switch::try_send(cPacket *pkt, int gid) {
     if (endTransmissionEvents[gid]->isScheduled()) {
         // We are currently busy, so just queue up the packet.
-        pkt->setTimestamp();
+//        pkt->setTimestamp();
         queues[gid].insert(pkt);
 //        EV_DEBUG << "queued pkt slot " << ((SwitchMLPacket*) pkt)->getSlot()
 //                        << endl;
@@ -61,15 +61,15 @@ void Switch::startTransmitting(cMessage *msg, int gid) {
 
 void Switch::multicast_downward(SwitchMLPacket *pkt) {
     auto jid = pkt->getTensor_key().job_id;
-    EV_DEBUG << "Switch " << getId() << " multicast downward pkt job " << jid
-                    << " gate ids: ";
+//    EV_DEBUG << "Switch " << getId() << " multicast downward pkt job " << jid
+//                    << " gate ids: ";
     for (auto gid : gate_ids_for_job[jid]) {
-        EV_DEBUG << gid << " ";
+//        EV_DEBUG << gid << " ";
         pkt->setUpward(false);
         pkt->setFrom_id(getId());
         try_send(pkt->dup(), gid);
     }
-    EV_DEBUG << endl;
+//    EV_DEBUG << endl;
 }
 
 void Switch::handleMessage(cMessage *msg) {
@@ -114,45 +114,65 @@ void Switch::handleMessage(cMessage *msg) {
         return;
     }
     auto p = (SwitchMLPacket*) msg;
-    auto key = fmt::format("s{}v{}", p->getSlot(), p->getVer());
-    auto key_of_the_other_slot = fmt::format("s{}v{}", p->getSlot(),
-            1 - p->getVer());
-    EV_DEBUG << "Switch " << getId() << " get packet slot " << p->getSlot()
-                    << " at " << simTime() << endl;
+    auto slot_ver = fmt::format("s{}v{}", p->getSlot(), p->getVer());
+    auto &count = count_for_tensor_key[p->getTensor_key()];
+
+//    EV_DEBUG << "Switch " << getId() << " get packet slot " << p->getSlot()
+//                    << " at " << simTime() << endl;
     if (p->getUpward()) {
         auto &seen = seen_for_tensor_key[p->getTensor_key()];
-        auto &count = count_for_tensor_key[p->getTensor_key()];
-        auto &seen_key = seen[key];
-        if (seen_key.find(p->getFrom_id()) != seen_key.end()) { // shadow buffer
-            EV_FATAL << "Switch " << getId()
-                            << " received shadow buffer request" << endl;
+        auto &seen_key = seen[slot_ver];
+        auto jid = p->getTensor_key().job_id;
+        auto from_id = p->getFrom_id();
+        if (seen_key.find(from_id) != seen_key.end()) { // shadow buffer
+            if (count[slot_ver] == p->getN_workers()) {
+                // send shadow buffer to p.id
+                EV_DEBUG << "Switch " << getId()
+                                << " getting and replying a shadow buffer request for slot "
+                                << p->getSlot() << " at " << simTime() << endl;
+                p->setUpward(false);
+                try_send(p, gate_id[from_id]);
+                return;
+            } else if (!top_level_for_job[jid] && count[slot_ver] == 0) {
+                // this switch does not have the shadow buffer requested, forwarding the request to upper level switch
+                EV_DEBUG << "Switch " << getId()
+                                << " getting and forwarding a shadow buffer request for slot "
+                                << p->getSlot() << " at " << simTime() << endl;
+                p->setFrom_id(getId());
+                try_send(p, gate("up_ports$o", 0)->getId());
+                return;
+            } else {
+                EV_FATAL << "Switch " << getId()
+                                << " received shadow buffer request but don't have that buffer available"
+                                << endl;
+            }
         } else {
-            auto jid = p->getTensor_key().job_id;
-            seen_key.insert(p->getFrom_id());
-            seen[key_of_the_other_slot].erase(p->getFrom_id());
+            auto key_of_the_other_slot = fmt::format("s{}v{}", p->getSlot(),
+                    1 - p->getVer());
+            seen_key.insert(from_id);
+            seen[key_of_the_other_slot].erase(from_id);
 //            std::cout << count[key] << " " << p->getN_workers() << " " << p->getJob_id() << " " << num_updates_for_job[p->getJob_id()] << std::endl;
-            count[key] = ((count[key] + 1) % p->getN_workers())
+            count[slot_ver] = ((count[slot_ver] + 1) % p->getN_workers())
                     % num_updates_for_job[jid];
-            if (count[key] == 0) {
+            if (count[slot_ver] == 0) {
                 EV_DEBUG
                                 << fmt::format(
                                         "Switch {} done slot {} offset {}\n",
                                         getId(), p->getSlot(), p->getOffset());
                 // done aggregation for this slot
                 if (top_level_for_job[jid]) { // downward
-                    count[key] = p->getN_workers();
+                    count[slot_ver] = p->getN_workers();
                     multicast_downward(p);
                 } else {  // upward
                     // send to upper level
-                    auto pkt = p->dup();
-                    pkt->setFrom_id(getId());
-                    try_send(pkt, gate("up_ports$o", 0)->getId());
+                    p->setFrom_id(getId());
+                    try_send(p, gate("up_ports$o", 0)->getId());
+                    return;
                 }
             } // else drop (free) packet
         }
     } else { // received from upper level switch
-        auto &count = count_for_tensor_key[p->getTensor_key()];
-        count[key] = p->getN_workers();
+        count[slot_ver] = p->getN_workers();
         multicast_downward(p);
     }
     delete p;

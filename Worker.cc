@@ -32,6 +32,13 @@ void Worker::initialize() {
     par("MTU").setIntValue(MTU);
     par("num_updates").setIntValue(num_updates);
     num_slots = par("num_slots");
+    int64_t retransmission_timeout_ms = par("retransmission_timeout");
+    retransmission_enabled = retransmission_timeout_ms > 0;
+    if (retransmission_enabled) {
+        retransmission_timeout = SimTime(retransmission_timeout_ms, SIMTIME_MS);
+        EV_INFO << "retransmission time " << retransmission_timeout << endl;
+        retransmission_pkts.reserve(num_slots);
+    }
     EV_INFO << "num_updates " << num_updates << " MTU " << MTU << endl;
     srvProcType = cModuleType::get("TrainingProcess");
     out_gate = gate("port$o");
@@ -44,6 +51,7 @@ void Worker::initialize() {
     isBusy = false;
     job_dispatcher = getParentModule()->getSubmodule("job_dispatcher");
     pktOut = registerSignal("pktOut");
+    pktRetransmission = registerSignal("pktRetransmission");
 //    pktIn = registerSignal("pktIn");
 }
 
@@ -57,10 +65,10 @@ void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
     // caller should delete pkt
 }
 
-void Worker::try_send(cPacket *pkt) {
+void Worker::try_send(SwitchMLPacket *pkt) {
+    pkt->setTimestamp();
     if (endTransmissionEvent->isScheduled()) {
         // We are currently busy, so just queue up the packet.
-        pkt->setTimestamp();
         queue.insert(pkt);
     } else {
         // We are idle, so we can start transmitting right away.
@@ -68,13 +76,28 @@ void Worker::try_send(cPacket *pkt) {
     }
 }
 
-void Worker::startTransmitting(cMessage *pkt) {
+void Worker::startTransmitting(SwitchMLPacket *pkt) {
     isBusy = true;
+    if (retransmission_enabled) {
+        schedule_timeout_retransmission(pkt);
+        if (pkt->getKind() == 9) {
+            // incoming is a retransmission pkt
+            pkt->setKind(8); // anything not 9: mark as non retransmission pkts
+            emit(pktRetransmission, pkt);
+        }
+    }
     send(pkt, out_gate);
     emit(pktOut, pkt);
     simtime_t endTransmission =
             channel ? channel->getTransmissionFinishTime() : simTime();
     scheduleAt(endTransmission, endTransmissionEvent);
+}
+
+void Worker::schedule_timeout_retransmission(SwitchMLPacket *pkt) {
+    auto retransmission_pkt = pkt->dup();
+    retransmission_pkt->setKind(9);
+    retransmission_pkts[pkt->getSlot()] = retransmission_pkt;
+    scheduleAfter(retransmission_timeout, retransmission_pkt);
 }
 
 void Worker::notifyCollectiveOperationDone(CollectiveOperationRequest *req) {
@@ -124,12 +147,13 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
                                 getId(), job_id, grad_size, num_pkts_expected,
                                 collective_operation_requests_for_job[job_id].getLength())
                         << " at " << simTime() << endl;
+        // first batch
         for (uint64_t slot = 0; slot < num_slots; ++slot) {
             auto offset = slot * num_updates;
             if (offset >= grad_size)
                 break;
             auto p = new SwitchMLPacket();
-            p->setBitLength(MTU);
+            p->setByteLength(MTU);
             p->setFrom_id(getId());
             p->setSlot(slot);
             p->setVer(0);
@@ -180,7 +204,7 @@ void Worker::handleMessage(cMessage *msg) {
             // Transmission finished, we can start next one.
             isBusy = false;
             if (!queue.isEmpty()) {
-                startTransmitting((cMessage*) queue.pop());
+                startTransmitting((SwitchMLPacket*) queue.pop());
             }
             break;
         }
@@ -219,6 +243,26 @@ void Worker::handleMessage(cMessage *msg) {
     }
 
     auto p = (SwitchMLPacket*) (msg);
+
+    if (retransmission_enabled) {
+        if (p->getKind() == 9) {
+            // timeout retransmission pkt
+            EV_DEBUG << "Worker " << getId()
+                            << " try_send retransmission packet slot "
+                            << p->getSlot() << " at " << simTime() << endl;
+            try_send(p);
+            return;
+        } else if (p->getTimestamp()
+                < obsolete_pkt_timestamp[p->getTensor_key()]) {
+            // these packets are sent out before the transmission is marked complete, so they are obsolete (now that the transmission is complete)
+            EV_DEBUG << "Worker " << getId()
+                            << " received obsolete packet slot " << p->getSlot()
+                            << " at " << simTime() << endl;
+            delete p;
+            return;
+        }
+    }
+
 //    emit(pktIn, p);
     EV_DEBUG << "Worker " << getId() << " get packet slot " << p->getSlot()
                     << " at " << simTime() << endl;
@@ -234,13 +278,22 @@ void Worker::handleMessage(cMessage *msg) {
                                 getId(), p->getSlot(), p->getOffset(),
                                 set.size(), p->getNum_pkts_expected());
         // cancel timer if retransmission is enabled
+        if (retransmission_enabled) {
+            cancelAndDelete(retransmission_pkts[p->getSlot()]);
+        }
+
         auto &tensor_key = p->getTensor_key();
         if (set.size() == p->getNum_pkts_expected()) {
             // collection operation done!
             notifyCollectiveOperationDone(
                     (CollectiveOperationRequest*) active_collective_operation_request_for_job[tensor_key.job_id]);
 
-            // clear local resources (can't clear yet if loss recovery is enabled)
+            // clear local resources
+            // everything received that has timestamps before this obsolete_pkt_timestamp is obsolete
+            if (retransmission_enabled) {
+                obsolete_pkt_timestamp[tensor_key] = simTime()
+                        + SimTime(1, SIMTIME_PS);
+            }
             set.clear();
             received_pkts.erase(tensor_key);
         } else {
@@ -262,4 +315,9 @@ void Worker::handleMessage(cMessage *msg) {
 Worker::~Worker() {
 //    emit(testSignal, false);
     cancelAndDelete(endTransmissionEvent);
+    if (retransmission_enabled) {
+        for (auto p : retransmission_pkts) {
+            cancelAndDelete(p);
+        }
+    }
 }

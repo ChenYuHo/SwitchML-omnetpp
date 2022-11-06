@@ -7,6 +7,7 @@ import ned.IdealChannel;
 network TwoLayers
 {
     parameters:
+        @statistic[nTimeouts](source=count(pktRetransmission); record=last); // from all workers
         @statistic[txBits](source=packetBits(pktOut); record=sum); // from all workers
         // @statistic[rxBits](source=sum(packetBits(pktIn)); record=last); // ignored because for SwitchML it will be the same as txBits
         @statistic[totalCommTime](source=commTime; record=sum); // time can do first comm until last comm done (per iter, for all workers)

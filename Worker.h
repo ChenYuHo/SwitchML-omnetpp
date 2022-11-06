@@ -32,9 +32,14 @@ private:
     void startOneCollectiveOperation(uint64_t);
     int64_t MTU;
     cMessage *endTransmissionEvent;
+    bool retransmission_enabled;
+    std::unordered_map<TensorKey, simtime_t> obsolete_pkt_timestamp { };
+    std::vector<SwitchMLPacket*> retransmission_pkts;
+    simtime_t retransmission_timeout;
+    void schedule_timeout_retransmission(SwitchMLPacket*);
     bool isBusy;
-    void startTransmitting(cMessage*);
-    void try_send(cPacket*);
+    void startTransmitting(SwitchMLPacket*);
+    void try_send(SwitchMLPacket*);
     cQueue queue;
     cChannel *channel;
     void initialize() override;
@@ -43,6 +48,7 @@ private:
     int64_t gbps;
 
     simsignal_t pktOut;
+    simsignal_t pktRetransmission;
 //    simsignal_t pktIn;
 };
 

@@ -2,11 +2,13 @@ simple Worker
 {
     parameters:
         @signal[pktOut](type=cPacket);
+        @signal[pktRetransmission](type=cPacket);
         bool packet_simulation = default(true);
         int MTU @mutable = default(0);
         int num_slots = default(512);
         int num_updates @mutable = default(0);
         int num_gpus = default(4);
+        int retransmission_timeout @unit(ms) = default(0ms);
         @display("i=device/server");
     gates:
         inout port;
