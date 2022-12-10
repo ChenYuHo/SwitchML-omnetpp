@@ -32,6 +32,7 @@ void Switch::clean_resources_for_job(uint64_t jid) {
     num_updates_for_job.erase(jid);
     top_level_for_job.erase(jid);
     gate_ids_for_job.erase(jid);
+    done_jobs.insert(jid);
 }
 
 void Switch::try_send(cPacket *pkt, int gid) {
@@ -123,6 +124,11 @@ void Switch::handleMessage(cMessage *msg) {
         auto &seen = seen_for_tensor_key[p->getTensor_key()];
         auto &seen_key = seen[slot_ver];
         auto jid = p->getTensor_key().job_id;
+        if (done_jobs.find(jid) != done_jobs.end()) {
+            // job done, drop pkt
+            delete p;
+            return;
+        }
         auto from_id = p->getFrom_id();
         if (seen_key.find(from_id) != seen_key.end()) { // shadow buffer
             if (count[slot_ver] == p->getN_workers()) {

@@ -25,6 +25,7 @@ private:
     std::unordered_map<int, cChannel*> channels { }; // gate id -> channel
     std::unordered_map<int, bool> port_isBusy { };
     std::unordered_map<int, cQueue> queues { };
+    std::unordered_set<uint64_t> done_jobs { };
     void multicast_downward(SwitchMLPacket*);
     void try_send(cPacket*, int);
     void startTransmitting(cMessage*, int);
