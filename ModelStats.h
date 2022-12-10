@@ -30,11 +30,23 @@ extern std::vector<simtime_t> bp_times[num_models];
 
 extern std::vector<simtime_t> wu_times[num_models];
 
-extern std::vector<const char*> fp_times_raw;
+extern std::vector<const char*> fp_times_raw_v100;
 
-extern std::vector<const char*> bp_times_raw;
+extern std::vector<const char*> bp_times_raw_v100;
 
-extern std::vector<const char*> wu_times_raw;
+extern std::vector<const char*> wu_times_raw_v100;
+
+extern std::vector<const char*> fp_times_raw_a100;
+
+extern std::vector<const char*> bp_times_raw_a100;
+
+extern std::vector<const char*> wu_times_raw_a100;
+
+extern std::vector<const char*> fp_times_raw_a100_match_v100_bs;
+
+extern std::vector<const char*> bp_times_raw_a100_match_v100_bs;
+
+extern std::vector<const char*> wu_times_raw_a100_match_v100_bs;
 
 extern simtime_t all_fps_and_last_bp_times[num_models];
 extern simtime_t all_fps_and_bps_times[num_models];

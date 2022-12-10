@@ -170,9 +170,23 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         } else {
             model = job->getModel();
             if (fp_times[model].empty()) {
-                insert_simtime(fp_times[model], fp_times_raw[model]);
-                insert_simtime(bp_times[model], bp_times_raw[model]);
-                insert_simtime(wu_times[model], wu_times_raw[model]);
+                if (worker->par("gpu_type").stdstringValue() == "v100") {
+                    insert_simtime(fp_times[model], fp_times_raw_v100[model]);
+                    insert_simtime(bp_times[model], bp_times_raw_v100[model]);
+                    insert_simtime(wu_times[model], wu_times_raw_v100[model]);
+                } else if (worker->par("gpu_type").stdstringValue() == "a100") {
+                    insert_simtime(fp_times[model], fp_times_raw_a100[model]);
+                    insert_simtime(bp_times[model], bp_times_raw_a100[model]);
+                    insert_simtime(wu_times[model], wu_times_raw_a100[model]);
+                } else if (worker->par("gpu_type").stdstringValue()
+                        == "a100_match_v100_bs") {
+                    insert_simtime(fp_times[model],
+                            fp_times_raw_a100_match_v100_bs[model]);
+                    insert_simtime(bp_times[model],
+                            bp_times_raw_a100_match_v100_bs[model]);
+                    insert_simtime(wu_times[model],
+                            wu_times_raw_a100_match_v100_bs[model]);
+                }
                 all_fps_and_last_bp_times[model] = all_fps_and_last_bp(model);
                 all_fps_and_bps_times[model] = all_fps_and_bps(model);
                 min_wait_times[model] = min_wait_time(model, false, datarate);
