@@ -52,6 +52,7 @@ simple JobDispatcher
         string custom_fp_times = default("");
         string custom_bp_times = default("");
         string custom_wu_times = default("");
+        string custom_placement = default("");
         int custom_iters = default(0);
     gates:
         input jobin;

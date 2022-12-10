@@ -9,6 +9,61 @@ public:
     virtual ~JobPlacement() = default;
 };
 
+class Custom: public JobPlacement {
+private:
+    std::string placement_str;
+    std::unordered_map<uint64_t, std::unordered_map<int, unsigned>> placement { };
+public:
+    Custom(JobDispatcher *job_dispatcher, std::string placement_str) :
+            placement_str(placement_str) {
+        // example: 5-0&2,4-1:4&3:2,7-3
+        // comma separates placement_str as job_placement, whose format is JID-PLACEMENT
+        // & separates PLACEMENT as worker_gpus, whose format is WID:NUM_GPUS where NUM_GPUS defaults to 1 if no ":" exists
+        std::stringstream ss(placement_str);
+        std::string job_placement;
+        while (getline(ss, job_placement, ',')) {
+            auto idx = job_placement.find("-");
+            if (idx == std::string::npos) {
+                std::cerr << "placement string format error" << endl;
+                exit(1);
+            }
+            auto jid = std::stoull(job_placement.substr(0, idx));
+            std::stringstream sss(job_placement.substr(idx + 1));
+            std::string worker_gpus;
+            while (getline(sss, worker_gpus, '&')) {
+                auto idx = worker_gpus.find(":");
+                if (idx == std::string::npos) {
+                    auto wid = job_dispatcher->index_to_wid[std::stoi(
+                            worker_gpus)];
+                    EV_DEBUG << "index " << worker_gpus << " wid " << wid
+                                    << " num_gpus 1" << endl;
+                    placement[jid][wid] = 1;
+                } else {
+                    auto wid = job_dispatcher->index_to_wid[std::stoi(
+                            worker_gpus.substr(0, idx))];
+                    EV_DEBUG << "index " << worker_gpus.substr(0, idx)
+                                    << " wid " << wid << " num_gpus "
+                                    << worker_gpus.substr(idx + 1) << endl;
+                    placement[jid][wid] = std::stoul(
+                            worker_gpus.substr(idx + 1));
+                }
+            }
+        }
+        for (auto &pair : placement) {
+            EV_DEBUG << "JID " << pair.first << " placement:";
+            for (auto p : pair.second) {
+                EV_DEBUG << "wid " << p.first << " gpu " << p.second << " ";
+            }
+            EV_DEBUG << endl;
+        }
+
+    }
+    ;
+    std::unordered_map<int, unsigned> place_job(const Job *job) override {
+        return placement[job->getJob_id()];
+    }
+};
+
 class Random: public JobPlacement {
 private:
     cRNG *rng;

@@ -75,7 +75,7 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
             });
 
     // re-id jobs, smaller jid has earlier submission time
-    uint64_t jid = 1;
+    uint64_t jid = 0;
     for (auto job_info : jobs) {
         job_info->setJob_id(jid++);
         sendDelayed(job_info,

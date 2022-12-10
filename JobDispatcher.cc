@@ -37,6 +37,22 @@ void JobDispatcher::initialize(int stage) {
             EV_FATAL << "Unexpected Job Scheduling: " << js << endl;
         }
 
+        jobSubmissionTime = registerSignal("jobSubmissionTime");
+        jobCompletionTime = registerSignal("jobCompletionTime");
+        jobStartTime = registerSignal("jobStartTime");
+        jobWaitTime = registerSignal("jobWaitTime");
+        jobPlacementType = registerSignal("jobPlacementType");
+    } else if (stage == 1) {
+        for (int i = 0; i < n_workers; ++i) {
+            auto wid = getParentModule()->findSubmodule("workers", i);
+            index_to_wid[i] = wid;
+            auto worker = (Worker*) getSimulation()->getModule(wid);
+            auto tor_id = worker->tor_id();
+            tor_id_for_worker[wid] = tor_id;
+            workers_for_tor[tor_id].push_back(wid);
+            workers[wid] = worker;
+            free_gpus[wid] = worker->par("num_gpus");
+        }
         std::string p = par("job_placement");
         if (p == "random") {
             job_placement = new Random(getRNG(0), this, 0);
@@ -54,24 +70,11 @@ void JobDispatcher::initialize(int stage) {
             job_placement = new Random(getRNG(0), this, 6);
         } else if (p == "two_jobs") {
             job_placement = new Random(getRNG(0), this, 7);
+        } else if (p == "custom") {
+            job_placement = new Custom(this,
+                    par("custom_placement").stdstringValue());
         } else {
             EV_FATAL << "Unexpected Job Placement: " << p << endl;
-        }
-
-        jobSubmissionTime = registerSignal("jobSubmissionTime");
-        jobCompletionTime = registerSignal("jobCompletionTime");
-        jobStartTime = registerSignal("jobStartTime");
-        jobWaitTime = registerSignal("jobWaitTime");
-        jobPlacementType = registerSignal("jobPlacementType");
-    } else if (stage == 1) {
-        for (int i = 0; i < n_workers; ++i) {
-            auto wid = getParentModule()->findSubmodule("workers", i);
-            auto worker = (Worker*) getSimulation()->getModule(wid);
-            auto tor_id = worker->tor_id();
-            tor_id_for_worker[wid] = tor_id;
-            workers_for_tor[tor_id].push_back(wid);
-            workers[wid] = worker;
-            free_gpus[wid] = worker->par("num_gpus");
         }
         sendDirect(new cMessage,
                 getParentModule()->getSubmodule("job_submitter"), "directin");
@@ -233,6 +236,8 @@ bool JobDispatcher::tryDispatchAJob() {
         auto &workers_of_job = workers_for_job[job->getJob_id()];
         auto &switches = switches_for_job[job->getJob_id()];
         for (auto &pair : placement) {
+            EV_DEBUG << "wid " << pair.first << " num_gpus " << pair.second
+                            << endl;
             workers_of_job.insert(pair.first);
             auto tor_id = tor_id_for_worker[pair.first];
             switches.insert(tor_id);

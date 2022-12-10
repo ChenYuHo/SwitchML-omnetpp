@@ -13,6 +13,7 @@ class Hierarchy;
 class JobScheduling;
 class JobPlacement;
 class Random;
+class Custom;
 class TwoLayers;
 
 class JobDispatcher: public cSimpleModule {
@@ -26,6 +27,7 @@ public:
             const std::unordered_map<TensorKey, uint64_t>&);
 private:
     friend Random;
+    friend Custom;
     friend TwoLayers;
     Hierarchy *hierarchy;
     JobScheduling *job_scheduling;
@@ -39,6 +41,7 @@ private:
     std::unordered_map<uint64_t, std::unordered_set<int>> switches_for_job { };
     std::unordered_map<int, Worker*> workers { };
     std::unordered_map<int, std::vector<int>> workers_for_tor { };
+    std::unordered_map<int, int> index_to_wid { };
 //    std::unordered_map<int, Switch*> tors { };
     std::unordered_map<int, int> tor_id_for_worker { };
     std::unordered_map<int, unsigned> free_gpus { }; // worker id -> free gpus

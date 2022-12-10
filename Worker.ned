@@ -9,6 +9,7 @@ simple Worker
         int num_updates @mutable = default(0);
         int num_gpus = default(4);
         int retransmission_timeout @unit(ms) = default(0ms);
+        string gpu_type = default("a100");
         @display("i=device/server");
     gates:
         inout port;
