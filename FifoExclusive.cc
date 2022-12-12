@@ -14,7 +14,7 @@ private:
     std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> requests_of_key { };
     std::queue<TensorKey> queue { };
     JobDispatcher *job_dispatcher { };
-    std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { };
+    std::unordered_map<TensorKey, unsigned> num_workers_of_active_tensor_key { };
     bool TryStartOneCollectiveOperation();
     void initialize() override;
     void handleMessage(cMessage *msg) override;
@@ -33,7 +33,8 @@ bool FifoExclusive::TryStartOneCollectiveOperation() {
     auto &requests = requests_of_key[tensor_key];
     auto jid_to_add = tensor_key.job_id;
     auto layer = tensor_key.layer;
-    if (job_dispatcher->accommodate(num_workers_of_active_job_id, jid_to_add)) {
+    if (job_dispatcher->accommodate(num_workers_of_active_tensor_key,
+            jid_to_add)) {
         // can accommodate, start collective operation
         for (auto req : requests) {
             EV_DEBUG
@@ -45,7 +46,7 @@ bool FifoExclusive::TryStartOneCollectiveOperation() {
             sendDirect(req, getSimulation()->getModule(req->getWorker_id()),
                     "directin");
         }
-        num_workers_of_active_job_id[jid_to_add] = requests.size();
+        num_workers_of_active_tensor_key[tensor_key] = requests.size();
         requests_of_key.erase(tensor_key); // sent out, no need to delete pointers
         queue.pop();
         return true;
@@ -75,13 +76,14 @@ void FifoExclusive::handleMessage(cMessage *msg) {
         auto jid = tensor_key.job_id;
         auto layer = tensor_key.layer;
 
-        num_workers_of_active_job_id[jid] -= 1;
+        num_workers_of_active_tensor_key[tensor_key] -= 1;
         EV_DEBUG
                         << fmt::format(
                                 "FifoExclusive receives CollectiveOperationRequest layer {} jid {}, remaining workers {}\n",
-                                layer, jid, num_workers_of_active_job_id[jid]);
-        if (num_workers_of_active_job_id[jid] == 0) {
-            num_workers_of_active_job_id.erase(jid);
+                                layer, jid,
+                                num_workers_of_active_tensor_key[tensor_key]);
+        if (num_workers_of_active_tensor_key[tensor_key] == 0) {
+            num_workers_of_active_tensor_key.erase(tensor_key);
             while (TryStartOneCollectiveOperation()) {
                 // start as many as possible
             }
@@ -89,10 +91,19 @@ void FifoExclusive::handleMessage(cMessage *msg) {
         delete msg;
         break;
     }
-    case 5: // finished job
-        num_workers_of_active_job_id.erase(((Job*) msg)->getJob_id());
+    case 5: { // finished job
+        auto jid = ((Job*) msg)->getJob_id();
+        for (auto iterator = num_workers_of_active_tensor_key.begin();
+                iterator != num_workers_of_active_tensor_key.end();) {
+            if (iterator->first.job_id == jid) {
+                iterator = num_workers_of_active_tensor_key.erase(iterator);
+            } else {
+                ++iterator;
+            }
+        }
         delete msg;
         break;
+    }
     default:
         delete msg;
         EV_FATAL << "got unexpected message" << endl;

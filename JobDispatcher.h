@@ -20,7 +20,7 @@ class JobDispatcher: public cSimpleModule {
 public:
     ~JobDispatcher();
 //    bool accommodate(const std::unordered_set<uint64_t>&, uint64_t);
-    bool accommodate(const std::unordered_map<uint64_t, unsigned>&, uint64_t,
+    bool accommodate(const std::unordered_map<TensorKey, unsigned>&, uint64_t,
             bool = true);
     void clean_resources_for_tensor_key(uint64_t, const TensorKey&);
     void bssi(std::deque<TensorKey>&, std::unordered_map<TensorKey, double>,

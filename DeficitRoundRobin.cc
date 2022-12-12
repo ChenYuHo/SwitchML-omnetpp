@@ -33,7 +33,7 @@ private:
     double get_weight(const TensorKey&);
     unsigned StartCollectiveOperations();
     std::deque<TensorKey> pending_tensors { };
-    std::unordered_map<uint64_t, unsigned> num_workers_of_active_job_id { }; // only one will be active
+    std::unordered_map<TensorKey, unsigned> num_workers_of_active_tensor_key { }; // only one will be active
     bool exclusive;
 };
 
@@ -56,7 +56,15 @@ void DeficitRoundRobin::clean_resources_for_tensor(
 
 void DeficitRoundRobin::clean_resources_for_job(uint64_t jid) {
     queues_for_job.erase(jid);
-    num_workers_of_active_job_id.erase(jid);
+    for (auto iterator = num_workers_of_active_tensor_key.begin();
+            iterator != num_workers_of_active_tensor_key.end();) {
+        if (iterator->first.job_id == jid) {
+            iterator = num_workers_of_active_tensor_key.erase(iterator);
+        } else {
+            ++iterator;
+        }
+    }
+
     jid_set.erase(jid);
     for (auto iter = drr_queue.begin(); iter != drr_queue.end();) {
         if (iter->second == jid) {
@@ -103,7 +111,7 @@ unsigned DeficitRoundRobin::StartCollectiveOperations() {
         if (!pq.empty()) {
             auto &tensor_key = pq.top();
             auto &requests = requests_of_key[tensor_key];
-            if (job_dispatcher->accommodate(num_workers_of_active_job_id,
+            if (job_dispatcher->accommodate(num_workers_of_active_tensor_key,
                     jid_to_add, exclusive)) {
                 auto this_size = std::min(remaining_sizes[tensor_key],
                         chunk_size);
@@ -131,7 +139,8 @@ unsigned DeficitRoundRobin::StartCollectiveOperations() {
                                 "directin");
                         req->setChunk_id(next_chunk_id);
                     }
-                    num_workers_of_active_job_id[jid_to_add] = requests.size();
+                    num_workers_of_active_tensor_key[tensor_key] =
+                            requests.size();
                     if (last_chunk) {
                         remaining_sizes[tensor_key] = 0;
                     } else {
@@ -174,7 +183,7 @@ void DeficitRoundRobin::handleMessage(cMessage *msg) {
             }
             // layers nearer the front (smaller index) gets higher priority
             queues_for_job[jid].push(tensor_key);
-            if (num_workers_of_active_job_id.empty()) {
+            if (num_workers_of_active_tensor_key.empty()) {
                 StartCollectiveOperations();
             }
         }
@@ -185,16 +194,16 @@ void DeficitRoundRobin::handleMessage(cMessage *msg) {
         auto req = (CollectiveOperationRequest*) msg;
         auto &tensor_key = req->getTensor_key();
         auto jid = tensor_key.job_id;
-        num_workers_of_active_job_id[jid] -= 1;
-        if (num_workers_of_active_job_id[jid] == 0) {
+        num_workers_of_active_tensor_key[tensor_key] -= 1;
+        if (num_workers_of_active_tensor_key[tensor_key] == 0) {
             EV_DEBUG << "Job " << jid << " layer " << tensor_key.layer
                             << " done\n";
             auto &tensor_key = req->getTensor_key();
             if (remaining_sizes[tensor_key] == 0) {
                 clean_resources_for_tensor(tensor_key);
             }
-            num_workers_of_active_job_id.erase(jid);
-            if (num_workers_of_active_job_id.empty()) {
+            num_workers_of_active_tensor_key.erase(tensor_key);
+            if (num_workers_of_active_tensor_key.empty()) {
                 StartCollectiveOperations();
             }
         }

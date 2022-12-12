@@ -174,11 +174,11 @@ void JobDispatcher::clean_resources_for_tensor_key(uint64_t jid,
 }
 
 bool JobDispatcher::accommodate(
-        const std::unordered_map<uint64_t, unsigned> &num_workers_of_active_job_id,
+        const std::unordered_map<TensorKey, unsigned> &num_workers_of_active_tensor_key,
         uint64_t jid_to_add, bool exclusive) {
     auto active_switch_ids = std::unordered_set<int> { };
-    for (auto &pair : num_workers_of_active_job_id) {
-        auto jid = pair.first;
+    for (auto &pair : num_workers_of_active_tensor_key) {
+        auto jid = pair.first.job_id;
         for (auto switch_id : switches_for_job[jid]) {
             active_switch_ids.insert(switch_id);
         }
