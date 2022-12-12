@@ -37,7 +37,6 @@ void Worker::initialize() {
     if (retransmission_enabled) {
         retransmission_timeout = SimTime(retransmission_timeout_ms, SIMTIME_MS);
         EV_INFO << "retransmission time " << retransmission_timeout << endl;
-        retransmission_pkts.reserve(num_slots);
     }
     EV_INFO << "num_updates " << num_updates << " MTU " << MTU << endl;
     srvProcType = cModuleType::get("TrainingProcess");
@@ -78,6 +77,15 @@ void Worker::try_send(SwitchMLPacket *pkt) {
 }
 
 void Worker::startTransmitting(SwitchMLPacket *pkt) {
+    while (pkt->getKind() == 10) {
+        // retransmission canceled
+        delete pkt;
+        if (queue.isEmpty()) {
+            isBusy = false;
+            return;
+        }
+        pkt = (SwitchMLPacket*) queue.pop();
+    }
     isBusy = true;
     if (retransmission_enabled) {
         schedule_timeout_retransmission(pkt);
@@ -97,7 +105,9 @@ void Worker::startTransmitting(SwitchMLPacket *pkt) {
 void Worker::schedule_timeout_retransmission(SwitchMLPacket *pkt) {
     auto retransmission_pkt = pkt->dup();
     retransmission_pkt->setKind(9);
-    retransmission_pkts[pkt->getSlot()] = retransmission_pkt;
+    auto &pkts = retransmission_pkts[pkt->getTensor_key()];
+    pkts.reserve(num_slots);
+    pkts[pkt->getSlot()] = retransmission_pkt;
     scheduleAfter(retransmission_timeout, retransmission_pkt);
 }
 
@@ -267,6 +277,12 @@ void Worker::handleMessage(cMessage *msg) {
             EV_DEBUG << "Worker " << getId()
                             << " received obsolete packet slot " << p->getSlot()
                             << " at " << simTime() << endl;
+            auto rpkt = retransmission_pkts[p->getTensor_key()][p->getSlot()];
+            if (queue.contains(rpkt)) {
+                rpkt->setKind(10); // will be canceled when queue pops
+            } else if (rpkt->isScheduled()) {
+                cancelAndDelete(rpkt);
+            }
             delete p;
             return;
         }
@@ -288,7 +304,12 @@ void Worker::handleMessage(cMessage *msg) {
                                 set.size(), p->getNum_pkts_expected());
         // cancel timer if retransmission is enabled
         if (retransmission_enabled) {
-            cancelAndDelete(retransmission_pkts[p->getSlot()]);
+            auto rpkt = retransmission_pkts[p->getTensor_key()][p->getSlot()];
+            if (queue.contains(rpkt)) {
+                rpkt->setKind(10); // will be canceled when queue pops
+            } else if (rpkt->isScheduled()) {
+                cancelAndDelete(rpkt);
+            }
         }
 
         auto &tensor_key = p->getTensor_key();
@@ -325,8 +346,10 @@ Worker::~Worker() {
 //    emit(testSignal, false);
     cancelAndDelete(endTransmissionEvent);
     if (retransmission_enabled) {
-        for (auto p : retransmission_pkts) {
-            cancelAndDelete(p);
+        for (auto &pair : retransmission_pkts) {
+            for (auto p : pair.second) {
+                cancelAndDelete(p);
+            }
         }
     }
 }

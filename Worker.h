@@ -42,7 +42,7 @@ private:
     bool retransmission_enabled;
     std::unordered_map<TensorKey, int> tensor_priority { };
     std::unordered_map<TensorKey, simtime_t> obsolete_pkt_timestamp { };
-    std::vector<SwitchMLPacket*> retransmission_pkts;
+    std::unordered_map<TensorKey, std::vector<SwitchMLPacket*>> retransmission_pkts;
     simtime_t retransmission_timeout;
     void schedule_timeout_retransmission(SwitchMLPacket*);
     bool isBusy;
