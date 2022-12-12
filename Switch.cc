@@ -39,7 +39,11 @@ void Switch::try_send(cPacket *pkt, int gid) {
     if (endTransmissionEvents[gid]->isScheduled()) {
         // We are currently busy, so just queue up the packet.
 //        pkt->setTimestamp();
-        queues[gid].insert(pkt);
+        queues.try_emplace(gid, "queue", [](cObject *a, cObject *b) {
+            auto sa = (SwitchMLPacket*) a;
+            auto sb = (SwitchMLPacket*) b;
+            return sa->getPriority() - sb->getPriority();
+        }).first->second.insert(pkt);
 //        EV_DEBUG << "queued pkt slot " << ((SwitchMLPacket*) pkt)->getSlot()
 //                        << endl;
     } else {
@@ -80,7 +84,12 @@ void Switch::handleMessage(cMessage *msg) {
 //        EV_DEBUG << "Transmission of gate " << pkt->getBitLength()
 //                        << " finished at " << simTime() << endl;
         auto gid = int(pkt->getBitLength());
-        auto &queue = queues[gid];
+        auto &queue = queues.try_emplace(gid, "queue",
+                [](cObject *a, cObject *b) {
+                    auto sa = (SwitchMLPacket*) a;
+                    auto sb = (SwitchMLPacket*) b;
+                    return sa->getPriority() - sb->getPriority();
+                }).first->second;
         port_isBusy[gid] = false;
         if (!queue.isEmpty()) {
 //            EV_DEBUG << "Start next transmission of gate " << gid << endl;

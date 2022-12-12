@@ -45,6 +45,7 @@ packet SwitchMLPacket
     uint32_t slot;
     uint32_t ver;
     uint32_t offset;
+    int priority;
     TensorKey tensor_key;
     uint32_t n_workers;
     uint64_t num_pkts_expected;
@@ -70,6 +71,7 @@ message Setup
 message CollectiveOperationRequest
 {
     int training_process_id;
+    int priority = 0;
     int worker_id;
     bool completed;
     short model;

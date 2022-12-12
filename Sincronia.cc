@@ -68,51 +68,98 @@ unsigned Sincronia::StartCollectiveOperations() {
     if (pending_tensors.empty())
         return 0;
     unsigned started = 0;
-    auto last_size = (uint64_t) -1; // 2^64-1, largest uint64_t
+//    auto last_size = (uint64_t) -1; // 2^64-1, largest uint64_t
+    int priority = 1; // the smaller, the higher priority
     for (auto iterator = pending_tensors.begin();
             iterator != pending_tensors.end();) {
         auto &tensor_key = *iterator;
         auto &requests = requests_of_key[tensor_key];
         auto jid_to_add = tensor_key.job_id;
         auto layer = tensor_key.layer;
-        if (job_dispatcher->accommodate(num_workers_of_active_tensor_key,
-                jid_to_add, exclusive)) {
-            auto this_size = std::min(remaining_sizes[tensor_key], chunk_size);
-            if (this_size <= last_size) {
-                // add to active
-                last_size = this_size; // to ensure strict ordering: work conservation doesn't take larger tensors
-                started++;
-                auto next_chunk_id = requests[0]->getChunk_id() + 1;
-                bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
-                for (auto &req : requests) {
-                    if (last_chunk) {
-                        req->setSize(remaining_sizes[tensor_key]);
-                    }
-                    EV_DEBUG
-                                    << fmt::format(
-                                            "Sincronia notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
-                                            req->getWorker_id(), jid_to_add,
-                                            layer, next_chunk_id,
-                                            req->getNum_chunks(),
-                                            req->getSize());
-                    sendDirect(req->dup(),
-                            getSimulation()->getModule(req->getWorker_id()),
-                            "directin");
-                    req->setChunk_id(next_chunk_id);
-                }
-                num_workers_of_active_tensor_key[tensor_key] = requests.size();
-                if (last_chunk) {
-                    remaining_sizes[tensor_key] = 0;
-                } else {
-                    remaining_sizes[tensor_key] -= chunk_size;
-                }
-                iterator = pending_tensors.erase(iterator);
-            } else {
-                ++iterator;
+        if (num_workers_of_active_tensor_key.find(tensor_key)
+                != num_workers_of_active_tensor_key.end()) {
+            // already invoked, just update priority
+            for (auto &req : requests) {
+                EV_DEBUG
+                                << fmt::format(
+                                        "Sincronia notifies Worker {} to update priority for Collective Operation Job {} layer {}, size {} priority {}\n",
+                                        req->getWorker_id(), jid_to_add, layer,
+                                        req->getSize(), priority);
+                req->setPriority(priority);
+                auto update = req->dup();
+                update->setKind(14);
+                sendDirect(update,
+                        getSimulation()->getModule(req->getWorker_id()),
+                        "directin");
             }
         } else {
-            ++iterator;
+            // add to active
+            started++;
+            auto next_chunk_id = requests[0]->getChunk_id() + 1;
+            bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
+            for (auto &req : requests) {
+                if (last_chunk) {
+                    req->setSize(remaining_sizes[tensor_key]);
+                }
+                EV_DEBUG
+                                << fmt::format(
+                                        "Sincronia notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {} priority {}\n",
+                                        req->getWorker_id(), jid_to_add, layer,
+                                        next_chunk_id, req->getNum_chunks(),
+                                        req->getSize(), priority);
+                req->setPriority(priority);
+                sendDirect(req->dup(),
+                        getSimulation()->getModule(req->getWorker_id()),
+                        "directin");
+                req->setChunk_id(next_chunk_id);
+            }
+            num_workers_of_active_tensor_key[tensor_key] = requests.size();
+            if (last_chunk) {
+                remaining_sizes[tensor_key] = 0;
+            } else {
+                remaining_sizes[tensor_key] -= chunk_size;
+            }
         }
+        ++iterator;
+        ++priority;
+//        if (job_dispatcher->accommodate(num_workers_of_active_tensor_key,
+//                jid_to_add, exclusive)) {
+//            auto this_size = std::min(remaining_sizes[tensor_key], chunk_size);
+//            if (this_size <= last_size) {
+//                // add to active
+//                last_size = this_size; // to ensure strict ordering: work conservation doesn't take larger tensors
+//                started++;
+//                auto next_chunk_id = requests[0]->getChunk_id() + 1;
+//                bool last_chunk = next_chunk_id == requests[0]->getNum_chunks();
+//                for (auto &req : requests) {
+//                    if (last_chunk) {
+//                        req->setSize(remaining_sizes[tensor_key]);
+//                    }
+//                    EV_DEBUG
+//                                    << fmt::format(
+//                                            "Sincronia notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
+//                                            req->getWorker_id(), jid_to_add,
+//                                            layer, next_chunk_id,
+//                                            req->getNum_chunks(),
+//                                            req->getSize());
+//                    sendDirect(req->dup(),
+//                            getSimulation()->getModule(req->getWorker_id()),
+//                            "directin");
+//                    req->setChunk_id(next_chunk_id);
+//                }
+//                num_workers_of_active_tensor_key[tensor_key] = requests.size();
+//                if (last_chunk) {
+//                    remaining_sizes[tensor_key] = 0;
+//                } else {
+//                    remaining_sizes[tensor_key] -= chunk_size;
+//                }
+//                iterator = pending_tensors.erase(iterator);
+//            } else {
+//                ++iterator;
+//            }
+//        } else {
+//            ++iterator;
+//        }
     }
 
     return started;
@@ -196,9 +243,9 @@ void Sincronia::handleMessage(cMessage *msg) {
                 clean_resources_for_tensor(tensor_key);
             }
             num_workers_of_active_tensor_key.erase(tensor_key);
-            if (pending_tensors.empty()) {
-                updatePendingTensors();
-            }
+//            if (pending_tensors.empty()) {
+            updatePendingTensors();
+//            }
             StartCollectiveOperations();
         }
         delete msg;

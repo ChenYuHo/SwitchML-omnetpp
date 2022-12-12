@@ -69,6 +69,7 @@ void Worker::try_send(SwitchMLPacket *pkt) {
     pkt->setTimestamp();
     if (endTransmissionEvent->isScheduled()) {
         // We are currently busy, so just queue up the packet.
+        pkt->setPriority(tensor_priority[pkt->getTensor_key()]);
         queue.insert(pkt);
     } else {
         // We are idle, so we can start transmitting right away.
@@ -153,6 +154,7 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
             if (offset >= grad_size)
                 break;
             auto p = new SwitchMLPacket();
+            p->setPriority(m->getPriority());
             p->setByteLength(MTU);
             p->setFrom_id(getId());
             p->setSlot(slot);
@@ -187,6 +189,7 @@ void Worker::handleMessage(cMessage *msg) {
         case 0: {
             // CollectiveOperationRequest from CollectiveOperationScheduler or TrainingProcess
             auto req = (CollectiveOperationRequest*) msg;
+            tensor_priority[req->getTensor_key()] = req->getPriority();
             auto jid = req->getTensor_key().job_id;
             collective_operation_requests_for_job[jid].insert(req);
             EV_DEBUG
@@ -232,6 +235,12 @@ void Worker::handleMessage(cMessage *msg) {
         }
         case 7: { // Collective operation done for non packet simulations
             notifyCollectiveOperationDone((CollectiveOperationRequest*) msg);
+            break;
+        }
+        case 14: { // Update tensor priority
+            auto req = (CollectiveOperationRequest*) msg;
+            tensor_priority[req->getTensor_key()] = req->getPriority();
+            delete req;
             break;
         }
         default:

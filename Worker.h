@@ -8,6 +8,13 @@ using namespace omnetpp;
 
 class Worker: public cSimpleModule {
 public:
+    Worker() : queue("queue", [](cObject *a, cObject *b){
+        auto sa = (SwitchMLPacket*) a;
+        auto sb = (SwitchMLPacket*) b;
+        return sa->getPriority() - sb->getPriority();
+    }) {
+
+    }
     ~Worker() override;
     int tor_id() {
         return ToR->getId();
@@ -33,6 +40,7 @@ private:
     int64_t MTU;
     cMessage *endTransmissionEvent;
     bool retransmission_enabled;
+    std::unordered_map<TensorKey, int> tensor_priority { };
     std::unordered_map<TensorKey, simtime_t> obsolete_pkt_timestamp { };
     std::vector<SwitchMLPacket*> retransmission_pkts;
     simtime_t retransmission_timeout;
@@ -40,7 +48,7 @@ private:
     bool isBusy;
     void startTransmitting(SwitchMLPacket*);
     void try_send(SwitchMLPacket*);
-    cQueue queue;
+    cPacketQueue queue;
     cChannel *channel;
     void initialize() override;
     void handleMessage(cMessage *msg) override;
