@@ -67,7 +67,7 @@ void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
         tensor_key.layer = layer;
         tensor_key.job_id = jid;
         req->setTensor_key(tensor_key);
-        scheduleAfter(wu_times[model][layer], req);
+        scheduleAfter(normal(wu_times[model][layer], wu_times[model][layer]/50), req);
         if (print)
             EV_DEBUG << "[TrainingProcess]\t" << simTime()
                             << fmt::format(
@@ -270,7 +270,7 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         } else {
             ins->setLayer(next_layer);
         }
-        scheduleAfter(fp_times[model][layer], ins);
+        scheduleAfter(normal(fp_times[model][layer], fp_times[model][layer]/50), ins);
         if (print)
             EV_DEBUG << "[TrainingProcess]\t" << simTime()
                             << fmt::format(
@@ -311,11 +311,11 @@ void TrainingProcess::handleMessage(cMessage *msg) {
             ins->setIter(next_iter);
             auto ack = ins->dup();
             ins->setKind(22);
-            scheduleAfter(bp_times[model][layer], ack);
+            scheduleAfter(normal(bp_times[model][layer], bp_times[model][layer]/50), ack);
         } else {
             ins->setLayer(layer - 1);
         }
-        scheduleAfter(bp_times[model][layer], ins);
+        scheduleAfter(normal(bp_times[model][layer], bp_times[model][layer]/50), ins);
         if (print)
             EV_DEBUG << "[TrainingProcess]\t" << simTime()
                             << fmt::format(
@@ -343,7 +343,7 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         msg->setKind(4);
         auto req = (CollectiveOperationRequest*) msg;
         auto layer = req->getTensor_key().layer;
-        scheduleAfter(wu_times[model][layer], req);
+        scheduleAfter(normal(wu_times[model][layer], wu_times[model][layer]/50), req);
         if (print)
             EV_DEBUG << "done collective for " << simTime() - req->getStart()
                             << endl;
