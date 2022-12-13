@@ -95,14 +95,13 @@ void JobDispatcher::bssi(std::deque<TensorKey> &result,
         std::unordered_map<TensorKey, double> weights,
         const std::unordered_map<TensorKey, uint64_t> &remaining_sizes) {
     auto iters = weights.size();
-
+#ifndef NDEBUG
     EV_DEBUG << "bssi on:\n";
     for (auto &pair : weights) {
         EV_DEBUG << " jid " << pair.first.job_id << " layer "
                         << pair.first.layer << " weight " << pair.second
                         << endl;
     }
-#ifndef NDEBUG
     std::stringstream ss;
     ss << "bssi result (last->first):";
 #endif

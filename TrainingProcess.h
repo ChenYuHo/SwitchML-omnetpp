@@ -9,8 +9,10 @@ using namespace omnetpp;
 using namespace std;
 class Worker;
 class Job;
+class Sincronia;
 
 class TrainingProcess: public cSimpleModule {
+    friend Sincronia;
 public:
     ~TrainingProcess();
 private:

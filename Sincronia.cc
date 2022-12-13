@@ -1,6 +1,7 @@
 #include "SwitchML_m.h"
 #include "JobDispatcher.h"
 #include "ModelStats.h"
+#include "TrainingProcess.h"
 #include <unordered_map>
 #include <queue>
 #define FMT_HEADER_ONLY
@@ -13,6 +14,7 @@ private:
     std::unordered_map<TensorKey, uint64_t> remaining_sizes { };
     std::unordered_map<TensorKey, std::vector<CollectiveOperationRequest*>> requests_of_key { };
     std::unordered_map<uint64_t, std::priority_queue<TensorKey>> queues_for_job { };
+    std::unordered_map<uint64_t, short> model_for_jid { };
 //    std::unordered_map<uint64_t, bool> busy { };
     JobDispatcher *job_dispatcher { };
     void clean_resources_for_job(uint64_t);
@@ -59,9 +61,37 @@ void Sincronia::clean_resources_for_job(uint64_t jid) {
 }
 
 double Sincronia::get_weight(const TensorKey &tensor_key) {
-//    auto req = requests_of_key[tensor_key];
     // remaining size
-    return double(remaining_sizes[tensor_key]);
+    auto weighting_fn = this->par("weighting_fn").stdstringValue();
+    if (weighting_fn == "remaining_sizes_more") {
+        // the more remaining, the higher priority
+        return double(remaining_sizes[tensor_key])
+                / double(
+                        model_sizes[model_for_jid[tensor_key.job_id]][tensor_key.layer]);
+    } else if (weighting_fn == "remaining_sizes_less") {
+        // the less remaining, the higher priority
+        return 1.
+                - double(remaining_sizes[tensor_key])
+                        / double(
+                                model_sizes[model_for_jid[tensor_key.job_id]][tensor_key.layer]);
+    } else if (weighting_fn == "layer") {
+        // front layers get higher priority
+        return 1.
+                - double(tensor_key.layer)
+                        / double(n_layers[model_for_jid[tensor_key.job_id]]);
+    } else if (weighting_fn == "idle") {
+        auto t = SimTime::ZERO;
+        for (auto req : requests_of_key[tensor_key]) {
+            auto tp = (TrainingProcess*) (req->getSenderModule());
+            if (!tp->gpu_start_idle_time.isZero()
+                    && simTime() > tp->gpu_start_idle_time) {
+                t += simTime() - tp->gpu_start_idle_time;
+            }
+        }
+        return t.dbl();
+    } else { // none
+        return 1.;
+    }
 }
 
 unsigned Sincronia::StartCollectiveOperations() {
@@ -232,6 +262,7 @@ void Sincronia::handleMessage(cMessage *msg) {
             EV_DEBUG << "Job " << jid << " layer " << tensor_key.layer
                             << " enqueued\n";
             queues_for_job[jid].push(tensor_key);
+            model_for_jid[jid] = request->getModel();
             updatePendingTensors();
             StartCollectiveOperations();
         }

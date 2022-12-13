@@ -11,6 +11,7 @@ simple Sincronia like ICollectiveScheduler
     parameters:
         int chunk_size = default(262144);
         bool exclusive = false;
+        string weighting_fn = default("remaining_sizes_more");
     gates:
         input directin;
 }
