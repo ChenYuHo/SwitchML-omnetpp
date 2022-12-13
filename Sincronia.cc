@@ -202,6 +202,13 @@ void Sincronia::updatePendingTensors() {
     } else {
         pending_tensors.push_back(weights.begin()->first);
     }
+    EV_DEBUG << "after bssi:";
+#ifndef NDEBUG
+    for (auto &tkey : pending_tensors) {
+        EV_DEBUG << " jid " << tkey.job_id << " layer " << tkey.layer;
+    }
+    EV_DEBUG << endl;
+#endif
 }
 
 void Sincronia::handleMessage(cMessage *msg) {
@@ -222,6 +229,8 @@ void Sincronia::handleMessage(cMessage *msg) {
             }
             // layers nearer the front (smaller index) gets higher priority
             auto jid = request->getTensor_key().job_id;
+            EV_DEBUG << "Job " << jid << " layer " << tensor_key.layer
+                            << " enqueued\n";
             queues_for_job[jid].push(tensor_key);
             updatePendingTensors();
             StartCollectiveOperations();
