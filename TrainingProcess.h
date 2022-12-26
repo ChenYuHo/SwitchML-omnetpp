@@ -5,6 +5,8 @@
 #define FMT_HEADER_ONLY
 #include "fmt/format.h"
 #include <queue>
+#include <iostream>
+#include <fstream>
 using namespace omnetpp;
 using namespace std;
 class Worker;
@@ -15,6 +17,7 @@ class TrainingProcess: public cSimpleModule {
     friend Sincronia;
 public:
     ~TrainingProcess();
+    void finish() override;
 private:
     std::vector<unsigned> can_do_fp { };
     void startComm(uint64_t, uint64_t);
@@ -30,7 +33,6 @@ private:
     uint64_t datarate;
     uint32_t num_workers_allocated;
     bool distributed;
-    void finish() override;
     std::queue<simtime_t> iter_start;
     simtime_t gpu_start_idle_time;
     simtime_t last_idle_times_start;
@@ -57,6 +59,7 @@ private:
     simsignal_t workerJobCompletionTime;
 
     bool print = false;
+    ofstream ofs;
 };
 
 #endif /* TrainingProcess_H_ */

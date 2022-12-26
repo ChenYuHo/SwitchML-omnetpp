@@ -41,7 +41,9 @@ private:
     cMessage *endTransmissionEvent;
     bool retransmission_enabled;
     std::unordered_map<TensorKey, int> tensor_priority { };
-    std::unordered_map<TensorKey, simtime_t> obsolete_pkt_timestamp { };
+//    std::unordered_map<TensorKey, simtime_t> obsolete_pkt_timestamp { };
+    std::unordered_map<TensorKey, uint64_t> iter_of_tkey { };
+    std::unordered_map<TensorKey, uint64_t> chunk_of_tkey { };
     std::unordered_map<TensorKey, std::vector<SwitchMLPacket*>> retransmission_pkts;
     simtime_t retransmission_timeout;
     void schedule_timeout_retransmission(SwitchMLPacket*);

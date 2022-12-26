@@ -50,6 +50,8 @@ packet SwitchMLPacket
     uint32_t n_workers;
     uint64_t num_pkts_expected;
     uint64_t grad_size;
+    uint64_t iter;
+    uint64_t chunk;
     bool upward;
 }
 

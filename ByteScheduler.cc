@@ -63,17 +63,26 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
             req->setSize(remaining_sizes[tensor_key]);
         }
     }
-    EV_DEBUG << "ByteScheduler notifies Workers ";
+//    EV_DEBUG << "ByteScheduler notifies Workers ";
     for (auto &req : requests) {
-        EV_DEBUG << req->getWorker_id() << " ";
+//        EV_DEBUG << req->getWorker_id() << " ";
         sendDirect(req->dup(), getSimulation()->getModule(req->getWorker_id()),
                 "directin");
         req->setChunk_id(next_chunk_id);
+
+        EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
+                         << fmt::format(
+                                 "\tByteScheduler start Collective Operation Worker {} Job {} layer {}, chunk {}/{} size {}",
+                                 req->getWorker_id(), tensor_key.job_id,
+                                 tensor_key.layer, next_chunk_id,
+                                 req->getNum_chunks(), req->getSize()) << endl;
+
     }
-    EV_DEBUG << "to start Collective Operation for Job " << tensor_key.job_id
-                    << " layer " << tensor_key.layer << ", chunk "
-                    << next_chunk_id << "/" << n_chunks << " size "
-                    << requests[0]->getSize() << " at " << simTime() << endl;
+//    EV_DEBUG << "to start Collective Operation for Job " << tensor_key.job_id
+//                    << " layer " << tensor_key.layer << ", chunk "
+//                    << next_chunk_id << "/" << n_chunks << " size "
+//                    << requests[0]->getSize() << " at " << simTime() << endl;
+
     num_workers_of_active_job_id[jid] = requests.size();
     if (last_chunk) {
         remaining_sizes[tensor_key] = 0;
@@ -103,6 +112,11 @@ void ByteScheduler::handleMessage(cMessage *msg) {
                 req->setSize(next_size);
                 req->setNum_chunks(num_chunks);
             }
+            EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
+                             << fmt::format(
+                                     "\tByteScheduler Job {} enqueue collective operation for layer {} size {} ",
+                                     tensor_key.job_id, tensor_key.layer, size)
+                             << endl;
             // layers nearer the front gets higher priority
             auto jid = request->getTensor_key().job_id;
             queues_for_job[jid].push(tensor_key);

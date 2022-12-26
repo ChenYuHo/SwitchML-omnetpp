@@ -8,8 +8,8 @@
 #include "fmt/format.h"
 using namespace omnetpp;
 
-// DeficitRoundRobin repeatedly services every queue (priority queue of a training job) with one chunk
-// and applies work conservation whenever possible
+// DeficitRoundRobin repeatedly services every queue (priority queue of a training job) with one chunk (apply highest priority)
+// and applies work conservation whenever possible (same low priority for all others)
 class DeficitRoundRobin: public cSimpleModule {
 private:
 //    int64_t quantum = 0; // records starting quantum for new entries
@@ -127,13 +127,14 @@ unsigned DeficitRoundRobin::StartCollectiveOperations() {
                         if (last_chunk) {
                             req->setSize(remaining_sizes[tensor_key]);
                         }
-                        EV_DEBUG
-                                        << fmt::format(
-                                                "DeficitRoundRobin notifies Worker {} to start Collective Operation for Job {} layer {}, chunk {}/{} size {}\n",
-                                                req->getWorker_id(), jid_to_add,
-                                                tensor_key.layer, next_chunk_id,
-                                                req->getNum_chunks(),
-                                                req->getSize());
+                        EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
+                                         << fmt::format(
+                                                 "\tDeficitRoundRobin start Collective Operation Worker {} Job {} layer {}, chunk {}/{} size {}",
+                                                 req->getWorker_id(),
+                                                 jid_to_add, tensor_key.layer,
+                                                 next_chunk_id,
+                                                 req->getNum_chunks(),
+                                                 req->getSize()) << endl;
                         sendDirect(req->dup(),
                                 getSimulation()->getModule(req->getWorker_id()),
                                 "directin");
@@ -181,6 +182,10 @@ void DeficitRoundRobin::handleMessage(cMessage *msg) {
                 req->setSize(chunk_size);
                 req->setNum_chunks(num_chunks);
             }
+            EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
+                             << fmt::format(
+                                     "\tDeficitRoundRobin Job {} enqueue collective operation for layer {} size {} ",
+                                     jid, tensor_key.layer, size) << endl;
             // layers nearer the front (smaller index) gets higher priority
             queues_for_job[jid].push(tensor_key);
             if (num_workers_of_active_tensor_key.empty()) {

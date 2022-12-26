@@ -52,6 +52,28 @@ void Worker::initialize() {
     pktOut = registerSignal("pktOut");
     pktRetransmission = registerSignal("pktRetransmission");
 //    pktIn = registerSignal("pktIn");
+
+//    auto p = new SwitchMLPacket();
+//    p->setPriority(1);
+//    queue.insert(p->dup());
+//    p->setPriority(3);
+//    queue.insert(p->dup());
+//    p->setPriority(7);
+//    queue.insert(p->dup());
+//    p->setPriority(4);
+//    queue.insert(p->dup());
+//    p->setPriority(-1);
+//    queue.insert(p->dup());
+//    p->setPriority(5);
+//    queue.insert(p->dup());
+//    p->setPriority(2);
+//    queue.insert(p);
+//    while (!queue.empty()) {
+//        auto p1 = (SwitchMLPacket*) queue.pop();
+//        EV_DEBUG << " " << p1->getPriority();
+//        delete p1;
+//    }
+//    EV_DEBUG << endl;
 }
 
 void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
@@ -65,7 +87,6 @@ void Worker::sendNextPacket(SwitchMLPacket *pkt, uint32_t next_offset) {
 }
 
 void Worker::try_send(SwitchMLPacket *pkt) {
-    pkt->setTimestamp();
     if (endTransmissionEvent->isScheduled()) {
         // We are currently busy, so just queue up the packet.
         pkt->setPriority(tensor_priority[pkt->getTensor_key()]);
@@ -91,7 +112,7 @@ void Worker::startTransmitting(SwitchMLPacket *pkt) {
         schedule_timeout_retransmission(pkt);
         if (pkt->getKind() == 9) {
             // incoming is a retransmission pkt
-            pkt->setKind(8); // anything not 9: mark as non retransmission pkts
+            pkt->setKind(99); // anything not 9: mark as non retransmission pkts
             emit(pktRetransmission, pkt);
         }
     }
@@ -125,17 +146,29 @@ void Worker::notifyCollectiveOperationDone(CollectiveOperationRequest *req) {
 
     doing_collective_operation[jid] = false;
     if (completed) {
+        iter_of_tkey[tensor_key] += 1;
+        chunk_of_tkey[tensor_key] = 0;
         sendDirect(req, training_process_for_job[jid], "directin");
         EV_DEBUG
                         << fmt::format(
                                 "Worker {} Job {} done aggregation layer {}\n",
                                 getId(), jid, tensor_key.layer);
     } else {
+        chunk_of_tkey[tensor_key] += 1;
         req->setKind(8);
+        EV_DEBUG
+                        << fmt::format(
+                                "Worker {} Job {} done collective operation chunk layer {}\n",
+                                getId(), jid, tensor_key.layer);
         sendDirect(req, training_process_for_job[jid], "directin");
     }
     if (!collective_operation_requests_for_job[jid].isEmpty()) {
         startOneCollectiveOperation(jid);
+    } else {
+        EV_DEBUG
+                        << fmt::format(
+                                "Worker {} Job {} not starting collective operations\n",
+                                getId(), jid);
     }
     ((JobDispatcher*) (job_dispatcher))->clean_resources_for_tensor_key(jid,
             tensor_key);
@@ -159,6 +192,7 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
                                 collective_operation_requests_for_job[job_id].getLength())
                         << " at " << simTime() << endl;
         // first batch
+        auto &tensor_key = m->getTensor_key();
         for (uint64_t slot = 0; slot < num_slots; ++slot) {
             auto offset = slot * num_updates;
             if (offset >= grad_size)
@@ -170,11 +204,13 @@ void Worker::startOneCollectiveOperation(uint64_t job_id) {
             p->setSlot(slot);
             p->setVer(0);
             p->setOffset(offset);
-            p->setTensor_key(m->getTensor_key());
+            p->setTensor_key(tensor_key);
             p->setN_workers(m->getNum_workers_allocated());
             p->setNum_pkts_expected(num_pkts_expected);
             p->setGrad_size(grad_size);
             p->setUpward(true);
+            p->setIter(iter_of_tkey[tensor_key]);
+            p->setChunk(chunk_of_tkey[tensor_key]);
             try_send(p);
         }
         active_collective_operation_request_for_job[job_id] = m;
@@ -225,9 +261,9 @@ void Worker::handleMessage(cMessage *msg) {
             // mod will self destroy
             auto job = (Job*) (msg);
             cModule *mod = srvProcType->createScheduleInit(
-                    fmt::format("Job{}_Rank{}_Worker{}_{}", job->getJob_id(),
-                            job->getRank(), getId(), ++num_jobs_given).c_str(),
-                    this);
+                    fmt::format("Job{}_Rank{}_Worker{}_TrainingProcess{}",
+                            job->getJob_id(), job->getRank(), getId(),
+                            ++num_jobs_given).c_str(), this);
             sendDirect(msg, mod, "directin");
             training_process_for_job[job->getJob_id()] = mod;
             break;
@@ -237,6 +273,7 @@ void Worker::handleMessage(cMessage *msg) {
             auto jid = job->getJob_id();
             job->setWorker_id(getId());
             sendDirect(job, job_dispatcher, "directin");
+            training_process_for_job[jid]->callFinish();
             training_process_for_job[jid]->deleteModule();
             training_process_for_job.erase(jid);
             collective_operation_requests_for_job.erase(jid);
@@ -264,6 +301,7 @@ void Worker::handleMessage(cMessage *msg) {
     auto p = (SwitchMLPacket*) (msg);
 
     if (retransmission_enabled) {
+        auto &tensor_key = p->getTensor_key();
         if (p->getKind() == 9) {
             // timeout retransmission pkt
             EV_DEBUG << "Worker " << getId()
@@ -271,13 +309,17 @@ void Worker::handleMessage(cMessage *msg) {
                             << p->getSlot() << " at " << simTime() << endl;
             try_send(p);
             return;
-        } else if (p->getTimestamp()
-                < obsolete_pkt_timestamp[p->getTensor_key()]) {
+        } else if (
+                p->getIter() == iter_of_tkey[tensor_key] ?
+                        p->getChunk() < chunk_of_tkey[tensor_key] :
+                        p->getIter() < iter_of_tkey[tensor_key]) {
+//        } else if (p->getTimestamp()
+//                < obsolete_pkt_timestamp[p->getTensor_key()]) {
             // these packets are sent out before the transmission is marked complete, so they are obsolete (now that the transmission is complete)
             EV_DEBUG << "Worker " << getId()
                             << " received obsolete packet slot " << p->getSlot()
                             << " at " << simTime() << endl;
-            auto rpkt = retransmission_pkts[p->getTensor_key()][p->getSlot()];
+            auto rpkt = retransmission_pkts[tensor_key][p->getSlot()];
             if (queue.contains(rpkt)) {
                 rpkt->setKind(10); // will be canceled when queue pops
             } else if (rpkt->isScheduled()) {
@@ -314,16 +356,16 @@ void Worker::handleMessage(cMessage *msg) {
 
         auto &tensor_key = p->getTensor_key();
         if (set.size() == p->getNum_pkts_expected()) {
-            // collection operation done!
+            // collective operation done!
             notifyCollectiveOperationDone(
                     (CollectiveOperationRequest*) active_collective_operation_request_for_job[tensor_key.job_id]);
 
             // clear local resources
             // everything received that has timestamps before this obsolete_pkt_timestamp is obsolete
-            if (retransmission_enabled) {
-                obsolete_pkt_timestamp[tensor_key] = simTime()
-                        + SimTime(1, SIMTIME_PS);
-            }
+//            if (retransmission_enabled) {
+//                obsolete_pkt_timestamp[tensor_key] = simTime()
+//                        + SimTime(1, SIMTIME_PS);
+//            }
             set.clear();
             received_pkts.erase(tensor_key);
         } else {
