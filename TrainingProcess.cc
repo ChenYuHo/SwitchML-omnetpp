@@ -23,12 +23,6 @@ void TrainingProcess::initialize() {
 
 void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
     if (distributed) {
-//        if (print)
-//            EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                             << fmt::format(
-//                                     "\tWorker {} Rank {} Job {} iter {} start comm layer {} ",
-//                                     wid, rank, jid, iter, layer) << simTime()
-//                             << endl;
         comm_start_times[layer] = simTime();
         auto size = model_sizes[model][layer];
         auto req = new CollectiveOperationRequest();
@@ -52,12 +46,6 @@ void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
                                  << " at " << simTime() << endl;
             sendDirect(req, collective_scheduler, "directin");
         } else { // send directly to Worker
-//            if (print)
-//                EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                                 << fmt::format(
-//                                         "\tWorker {} Rank {} Job {} iter {} TrainingProcess start collective operation for layer {} size {} ",
-//                                         wid, rank, jid, iter, layer, size)
-//                                 << endl;
             sendDirect(req, getParentModule(), "directin");
         }
 
@@ -222,12 +210,6 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         // FP layer "layer-1" (or BP layer 0 if layer==0) done, try to start layer "layer"
         if (layer == 0 && insIter > 0) {
             // last bp layer
-//            if (print)
-//                EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                                 << fmt::format(
-//                                         "\tWorker {} Rank {} Job {} iter {} done bp layer {} ",
-//                                         wid, rank, jid, insIter, layer)
-//                                 << simTime() << endl;
             markIdleStart();
             if (insIter == iters) {
                 // last bp is done, only last comm and wu left for this job
@@ -250,19 +232,8 @@ void TrainingProcess::handleMessage(cMessage *msg) {
 
         auto next_layer = layer + 1;
         if (layer == 0) {
-//            if (print)
-//                EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                                 << fmt::format(
-//                                         "\tWorker {} Rank {} Job {} start iter {}",
-//                                         wid, rank, jid, insIter) << endl;
             iter_start.push(simTime());
         } else {
-//            if (print)
-//                EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                                 << fmt::format(
-//                                         "\tWorker {} Rank {} Job {} iter {} done fp layer {}",
-//                                         wid, rank, jid, insIter, layer - 1)
-//                                 << endl;
             markIdleStart();
         }
 
@@ -291,20 +262,9 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         bool first_bp = layer == n_layers[model] - 1;
         if (first_bp) {
             // just done last fp layer
-//            if (print)
-//                EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                                 << fmt::format(
-//                                         "\tWorker {} Rank {} Job {} iter {} done fp layer {}",
-//                                         wid, rank, jid, iter, layer) << endl;
             markIdleStart();
         } else {
             // just done a bp layer
-//            if (print)
-//                EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                                 << fmt::format(
-//                                         "\tWorker {} Rank {} Job {} iter {} done bp layer {}",
-//                                         wid, rank, jid, iter, layer + 1)
-//                                 << endl;
             markIdleStart();
             // start or enqueue collective of layer "layer+1"
             auto comm_layer = layer + 1;
@@ -339,11 +299,6 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         // last bp (layer 0)
         auto ins = (Instruction*) msg;
         auto insIter = ins->getIter();
-//        if (print)
-//            EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                             << fmt::format(
-//                                     "\tWorker {} Rank {} Job {} iter {} done bp layer {}",
-//                                     wid, rank, jid, insIter, 0) << endl;
         markIdleStart();
         startComm(0, insIter);
         delete ins;
@@ -389,11 +344,6 @@ void TrainingProcess::handleMessage(cMessage *msg) {
     case 4: {
         auto req = (CollectiveOperationRequest*) msg;
         auto layer = req->getTensor_key().layer;
-//        if (print)
-//            EV_DETAIL << "[TrainingProcess]\t" << simTime()
-//                             << fmt::format(
-//                                     "\tWorker {} Rank {} Job {} iter {} done wu layer {}",
-//                                     wid, rank, jid, iter, layer) << endl;
         markIdleStart();
         if (layer == 0) {
             // time when next iter fp will start
