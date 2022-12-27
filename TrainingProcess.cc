@@ -61,9 +61,9 @@ void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
         if (print)
             EV_DETAIL << "[TrainingProcess]\t" << simTime()
                              << fmt::format(
-                                     "\tWorker {} Rank {} Job {} iter {} start wu layer {} duration {}",
-                                     wid, rank, jid, iter, layer, wu_time)
-                             << simTime() << endl;
+                                     "\tWorker {} Rank {} Job {} iter {} start wu layer {} duration ",
+                                     wid, rank, jid, iter, layer) << wu_time
+                             << endl;
         recordIdleTimeIfAny();
     }
 }
@@ -249,8 +249,8 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         if (print) {
             EV_DETAIL << "[TrainingProcess]\t" << simTime()
                              << fmt::format(
-                                     "\tWorker {} Rank {} Job {} iter {} start fp layer {} duration {}",
-                                     wid, rank, jid, insIter, layer, fp_time)
+                                     "\tWorker {} Rank {} Job {} iter {} start fp layer {} duration ",
+                                     wid, rank, jid, insIter, layer) << fp_time
                              << endl;
         }
         recordIdleTimeIfAny();
@@ -289,8 +289,8 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         if (print)
             EV_DETAIL << "[TrainingProcess]\t" << simTime()
                              << fmt::format(
-                                     "\tWorker {} Rank {} Job {} iter {} start bp layer {} duration {}",
-                                     wid, rank, jid, iter, layer, bp_time)
+                                     "\tWorker {} Rank {} Job {} iter {} start bp layer {} duration ",
+                                     wid, rank, jid, iter, layer) << bp_time
                              << endl;
         recordIdleTimeIfAny();
         break;
@@ -320,22 +320,21 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         if (print) {
             EV_DETAIL << "[TrainingProcess]\t" << req->getStart()
                              << fmt::format(
-                                     "\tWorker {} Rank {} Job {} iter {} start chunk {} layer {} duration {}",
+                                     "\tWorker {} Rank {} Job {} iter {} start chunk {} layer {} duration ",
                                      wid, rank, jid, iter, req->getChunk_id(),
-                                     layer, simTime() - req->getStart())
+                                     layer) << simTime() - req->getStart()
                              << endl;
             // done comm
             EV_DETAIL << "[TrainingProcess]\t" << comm_start_times[layer]
                              << fmt::format(
-                                     "\tWorker {} Rank {} Job {} iter {} start comm layer {} duration {}",
-                                     wid, rank, jid, iter, layer,
-                                     simTime() - comm_start_times[layer])
-                             << endl;
+                                     "\tWorker {} Rank {} Job {} iter {} start comm layer {} duration ",
+                                     wid, rank, jid, iter, layer)
+                             << simTime() - comm_start_times[layer] << endl;
 
             EV_DETAIL << "[TrainingProcess]\t" << simTime()
                              << fmt::format(
-                                     "\tWorker {} Rank {} Job {} iter {} start wu layer {} duration {}",
-                                     wid, rank, jid, iter, layer, wu_time)
+                                     "\tWorker {} Rank {} Job {} iter {} start wu layer {} duration ",
+                                     wid, rank, jid, iter, layer) << wu_time
                              << endl;
         }
         recordIdleTimeIfAny();
@@ -376,10 +375,9 @@ void TrainingProcess::handleMessage(cMessage *msg) {
             if (print) {
                 EV_DETAIL << "[TrainingProcess]\t" << iter_start.front()
                                  << fmt::format(
-                                         "\tWorker {} Rank {} Job {} iter {} start iter layer {} duration {}",
-                                         wid, rank, jid, iter, layer,
-                                         simTime() - iter_start.front())
-                                 << endl;
+                                         "\tWorker {} Rank {} Job {} iter {} start iter layer {} duration ",
+                                         wid, rank, jid, iter, layer)
+                                 << simTime() - iter_start.front() << endl;
             }
             iter++;
             std::fill(layer_done.begin(), layer_done.end(), false);
@@ -430,9 +428,9 @@ void TrainingProcess::handleMessage(cMessage *msg) {
         if (print) {
             EV_DETAIL << "[TrainingProcess]\t" << req->getStart()
                              << fmt::format(
-                                     "\tWorker {} Rank {} Job {} iter {} start chunk {} layer {} duration {}",
+                                     "\tWorker {} Rank {} Job {} iter {} start chunk {} layer {} duration ",
                                      wid, rank, jid, iter, req->getChunk_id(),
-                                     layer, simTime() - req->getStart())
+                                     layer) << simTime() - req->getStart()
                              << endl;
         }
         delete req;
