@@ -36,6 +36,7 @@ private:
     std::queue<simtime_t> iter_start;
     simtime_t gpu_start_idle_time;
     simtime_t last_idle_times_start;
+    std::vector<simtime_t> comm_start_times { };
 
     void initialize() override;
     void handleMessage(cMessage *msg) override;
