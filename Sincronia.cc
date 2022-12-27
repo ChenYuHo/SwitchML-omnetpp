@@ -25,6 +25,8 @@ private:
     unsigned StartCollectiveOperations();
     std::deque<TensorKey> pending_tensors { };
     std::unordered_map<TensorKey, unsigned> num_workers_of_active_tensor_key { };
+    std::unordered_map<uint64_t, TensorKey> active_tensor_for_jid { };
+    std::unordered_map<uint64_t, std::deque<TensorKey>> deferred_tensors { };
     bool exclusive;
 };
 
@@ -46,6 +48,7 @@ void Sincronia::clean_resources_for_tensor(const TensorKey &tensor_key) {
 
 void Sincronia::clean_resources_for_job(uint64_t jid) {
     queues_for_job.erase(jid);
+    active_tensor_for_jid.erase(jid);
     for (auto iterator = num_workers_of_active_tensor_key.begin();
             iterator != num_workers_of_active_tensor_key.end();) {
         if (iterator->first.job_id == jid) {
@@ -101,9 +104,9 @@ unsigned Sincronia::StartCollectiveOperations() {
         auto &requests = requests_of_key[tensor_key];
         auto jid_to_add = tensor_key.job_id;
         auto layer = tensor_key.layer;
-        if (num_workers_of_active_tensor_key.find(tensor_key)
-                != num_workers_of_active_tensor_key.end()) {
-            // already invoked, just update priority
+        if (active_tensor_for_jid.find(jid_to_add)
+                != active_tensor_for_jid.end()) {
+            // already running a chunk for jid_to_add, just update priority
             for (auto &req : requests) {
                 EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
                                  << fmt::format(
@@ -138,12 +141,8 @@ unsigned Sincronia::StartCollectiveOperations() {
                         "directin");
                 req->setChunk_id(next_chunk_id);
             }
+            active_tensor_for_jid[tensor_key.job_id] = tensor_key;
             num_workers_of_active_tensor_key[tensor_key] = requests.size();
-            if (last_chunk) {
-                remaining_sizes[tensor_key] = 0;
-            } else {
-                remaining_sizes[tensor_key] -= chunk_size;
-            }
         }
         ++iterator;
         ++priority;
@@ -159,7 +158,7 @@ void Sincronia::updatePendingTensors() {
         while (!pq.empty()) {
             auto &tensor_key = pq.top();
             if (remaining_sizes[tensor_key] == 0) {
-                // this tensor is done!
+                // this tensor is done (or is running last chunk)!
                 pq.pop();
                 continue;
             }
@@ -177,8 +176,8 @@ void Sincronia::updatePendingTensors() {
     } else {
         pending_tensors.push_back(weights.begin()->first);
     }
-    EV_DEBUG << "after bssi:";
 #ifndef NDEBUG
+    EV_DEBUG << "after bssi:";
     for (auto &tkey : pending_tensors) {
         EV_DEBUG << " jid " << tkey.job_id << " layer " << tkey.layer;
     }
@@ -208,7 +207,13 @@ void Sincronia::handleMessage(cMessage *msg) {
                              << fmt::format(
                                      "\tSincronia Job {} enqueue collective operation for layer {} size {} ",
                                      jid, tensor_key.layer, size) << endl;
-            queues_for_job[jid].push(tensor_key);
+            if (active_tensor_for_jid.find(jid)
+                    == active_tensor_for_jid.end()) {
+                queues_for_job[jid].push(tensor_key);
+            } else {
+                deferred_tensors[jid].push_back(tensor_key);
+            }
+
             model_for_jid[jid] = request->getModel();
             updatePendingTensors();
             StartCollectiveOperations();
@@ -224,11 +229,23 @@ void Sincronia::handleMessage(cMessage *msg) {
         if (num_workers_of_active_tensor_key[tensor_key] == 0) {
             EV_DEBUG << "Job " << jid << " layer " << tensor_key.layer
                             << " done\n";
+            active_tensor_for_jid.erase(jid);
             auto &tensor_key = req->getTensor_key();
+            if (req->getChunk_id() + 1 == req->getNum_chunks()) { // last chunk
+                remaining_sizes[tensor_key] = 0;
+            } else {
+                remaining_sizes[tensor_key] -= chunk_size;
+            }
             if (remaining_sizes[tensor_key] == 0) {
                 clean_resources_for_tensor(tensor_key);
             }
             num_workers_of_active_tensor_key.erase(tensor_key);
+            auto &deque = deferred_tensors[jid];
+            auto &pq = queues_for_job[jid];
+            while (!deque.empty()) {
+                pq.push(deque.front());
+                deque.pop_front();
+            }
             updatePendingTensors();
             StartCollectiveOperations();
         }
