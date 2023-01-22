@@ -290,6 +290,15 @@ void Worker::handleMessage(cMessage *msg) {
             delete req;
             break;
         }
+        case 17: {
+            // compress
+            auto req = (CollectiveOperationRequest*) msg;
+            auto sz = req->getSize();
+            req->setSize(sz > 3 ? sz / 4 : 1); // CNat compress size
+            req->setKind(0);
+            scheduleAfter(SimTime(double(sz)/44.525520170, SIMTIME_NS), req); // CNat compress time
+            break;
+        }
         default:
             delete msg;
             EV_FATAL << "got unexpected message" << endl;

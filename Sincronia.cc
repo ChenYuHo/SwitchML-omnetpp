@@ -136,6 +136,16 @@ unsigned Sincronia::StartCollectiveOperations() {
                                          next_chunk_id, req->getNum_chunks(),
                                          req->getSize(), priority) << endl;
                 req->setPriority(priority);
+                // approximately half in pending_tensors will be compressed
+                if ((priority - 1) * 2 >= pending_tensors.size()) {
+                    req->setKind(17);
+                    EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
+                                     << fmt::format(
+                                             "\tSincronia compress Worker {} Job {} layer {}, size {} priority {}",
+                                             req->getWorker_id(), jid_to_add,
+                                             layer, req->getSize(), priority)
+                                     << endl;
+                }
                 sendDirect(req->dup(),
                         getSimulation()->getModule(req->getWorker_id()),
                         "directin");
