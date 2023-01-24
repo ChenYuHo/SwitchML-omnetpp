@@ -28,6 +28,7 @@ private:
     std::unordered_map<uint64_t, TensorKey> active_tensor_for_jid { };
     std::unordered_map<uint64_t, std::deque<TensorKey>> deferred_tensors { };
     bool exclusive;
+    bool compression;
 };
 
 Define_Module(Sincronia);
@@ -36,6 +37,7 @@ void Sincronia::initialize() {
     exclusive = par("exclusive");
     chunk_size = par("chunk_size");
     job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
+    compression = par("compression");
 }
 
 void Sincronia::clean_resources_for_tensor(const TensorKey &tensor_key) {
@@ -137,7 +139,7 @@ unsigned Sincronia::StartCollectiveOperations() {
                                          req->getSize(), priority) << endl;
                 req->setPriority(priority);
                 // approximately half in pending_tensors will be compressed
-                if ((priority - 1) * 2 >= pending_tensors.size()) {
+                if (compression && (priority - 1) * 2 >= pending_tensors.size()) {
                     req->setKind(17);
                     EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
                                      << fmt::format(
