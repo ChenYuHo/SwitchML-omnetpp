@@ -32,13 +32,13 @@ public:
             std::string worker_gpus;
             while (getline(sss, worker_gpus, '&')) {
                 auto idx = worker_gpus.find(":");
-                if (idx == std::string::npos) {
+                if (idx == std::string::npos) { // accumulate
                     auto wid = job_dispatcher->index_to_wid[std::stoi(
                             worker_gpus)];
                     EV_DEBUG << "index " << worker_gpus << " wid " << wid
                                     << " num_gpus 1" << endl;
-                    placement[jid][wid] = 1;
-                } else {
+                    placement[jid][wid] += 1;
+                } else { // set
                     auto wid = job_dispatcher->index_to_wid[std::stoi(
                             worker_gpus.substr(0, idx))];
                     EV_DEBUG << "index " << worker_gpus.substr(0, idx)
@@ -175,7 +175,9 @@ public:
                 // no placement found
                 break;
             } // try place single rack
-            EV_DEBUG << "[JobPlacement]\t" << simTime() << "\tcan't place multi rack, try single rack" << endl;
+            EV_DEBUG << "[JobPlacement]\t" << simTime()
+                            << "\tcan't place multi rack, try single rack"
+                            << endl;
         }
         case 5:
         case 2: { // single rack
@@ -220,7 +222,9 @@ public:
                 // no placement found
                 break;
             } // try distributed
-            EV_DEBUG << "[JobPlacement]\t" << simTime() << "\tcan't place single rack, try distributed" << endl;
+            EV_DEBUG << "[JobPlacement]\t" << simTime()
+                            << "\tcan't place single rack, try distributed"
+                            << endl;
         }
         case 4:
         case 1: { // distributed
@@ -233,7 +237,8 @@ public:
                 // no placement found
                 break;
             } // fallback to random selection
-            EV_DEBUG << "[JobPlacement]\t" << simTime() << "\tfallback to random selection" << endl;
+            EV_DEBUG << "[JobPlacement]\t" << simTime()
+                            << "\tfallback to random selection" << endl;
         }
         case 0:
         default:
