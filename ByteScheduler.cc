@@ -62,7 +62,7 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
         for (auto &req : requests) {
             req->setSize(remaining_sizes[tensor_key]);
         }
-    }
+    } // else will be chunk_size
 //    EV_DEBUG << "ByteScheduler notifies Workers ";
     for (auto &req : requests) {
 //        EV_DEBUG << req->getWorker_id() << " ";
@@ -104,6 +104,7 @@ void ByteScheduler::handleMessage(cMessage *msg) {
         auto &requests = requests_of_key[tensor_key];
         requests.push_back(request);
         if (requests.size() == request->getNum_workers_allocated()) {
+            // got requests from all workers
             auto size = request->getSize();
             remaining_sizes[tensor_key] = size;
             auto num_chunks = size / chunk_size + (size % chunk_size ? 1 : 0);
@@ -129,14 +130,19 @@ void ByteScheduler::handleMessage(cMessage *msg) {
         auto req = (CollectiveOperationRequest*) msg;
         auto &tensor_key = req->getTensor_key();
         auto jid = tensor_key.job_id;
-        num_workers_of_active_job_id[jid] -= 1;
-        if (num_workers_of_active_job_id[jid] == 0) {
+        auto &num_remaining_updates = num_workers_of_active_job_id[jid];
+        auto first_finished_worker = req->getNum_workers_allocated()
+                == num_remaining_updates;
+        if (first_finished_worker && req->getCompleted()) {
+            // need to clean first because the first finished worker may soon send the next request
+            // before other workers report finished collective operation
+            clean_resources_for_tensor(tensor_key);
+        }
+        if (--num_remaining_updates == 0) {
+            // all workers reported finished collective operation
             EV_DEBUG << "ByteScheduler Job " << jid << " layer "
                             << tensor_key.layer << " done\n";
             busy[jid] = false;
-            if (req->getCompleted()) {
-                clean_resources_for_tensor(req->getTensor_key());
-            }
             StartOneCollectiveOperation(jid);
         }
         delete msg;

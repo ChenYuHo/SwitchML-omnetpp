@@ -139,7 +139,8 @@ unsigned Sincronia::StartCollectiveOperations() {
                                          req->getSize(), priority) << endl;
                 req->setPriority(priority);
                 // approximately half in pending_tensors will be compressed
-                if (compression && (priority - 1) * 2 >= pending_tensors.size()) {
+                if (compression
+                        && size_t(priority - 1) * 2 >= pending_tensors.size()) {
                     req->setKind(17);
                     EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
                                      << fmt::format(
@@ -237,20 +238,26 @@ void Sincronia::handleMessage(cMessage *msg) {
         auto req = (CollectiveOperationRequest*) msg;
         auto &tensor_key = req->getTensor_key();
         auto jid = tensor_key.job_id;
-        num_workers_of_active_tensor_key[tensor_key] -= 1;
-        if (num_workers_of_active_tensor_key[tensor_key] == 0) {
-            EV_DEBUG << "Job " << jid << " layer " << tensor_key.layer
-                            << " done\n";
-            active_tensor_for_jid.erase(jid);
-            auto &tensor_key = req->getTensor_key();
-            if (req->getChunk_id() + 1 == req->getNum_chunks()) { // last chunk
+
+        auto &num_remaining_updates =
+                num_workers_of_active_tensor_key[tensor_key];
+        auto first_finished_worker = req->getNum_workers_allocated()
+                == num_remaining_updates;
+        if (first_finished_worker) {
+            // need to clean first because the first finished worker may soon send the next request
+            // before other workers report finished collective operation
+            if (req->getCompleted()) { // last chunk
                 remaining_sizes[tensor_key] = 0;
+                clean_resources_for_tensor(tensor_key);
             } else {
                 remaining_sizes[tensor_key] -= chunk_size;
             }
-            if (remaining_sizes[tensor_key] == 0) {
-                clean_resources_for_tensor(tensor_key);
-            }
+        }
+
+        if (--num_remaining_updates == 0) {
+            EV_DEBUG << "Job " << jid << " layer " << tensor_key.layer
+                            << " done\n";
+            active_tensor_for_jid.erase(jid);
             num_workers_of_active_tensor_key.erase(tensor_key);
             auto &deque = deferred_tensors[jid];
             auto &pq = queues_for_job[jid];

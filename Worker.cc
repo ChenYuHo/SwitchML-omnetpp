@@ -381,7 +381,7 @@ void Worker::handleMessage(cMessage *msg) {
             // send next
             auto next_offset = p->getOffset() + num_slots * num_updates;
             if (next_offset < p->getGrad_size()) {
-                EV_DEBUG
+                EV_TRACE
                                 << fmt::format(
                                         "Worker {} Job {} layer {} send next offset {}\n",
                                         getId(), tensor_key.job_id,
