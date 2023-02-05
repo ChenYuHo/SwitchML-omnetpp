@@ -12,7 +12,9 @@ simple Sincronia like ICollectiveScheduler
         int chunk_size = default(262144);
         bool exclusive = false;
         bool compression = default(false);
-        string weighting_fn = default("remaining_sizes_more");
+        string weighting_fn = default("none");
+        @signal[compressedSize](type=int);
+        @signal[uncompressedSize](type=int);
     gates:
         input directin;
 }

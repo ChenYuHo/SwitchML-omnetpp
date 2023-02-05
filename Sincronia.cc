@@ -29,6 +29,8 @@ private:
     std::unordered_map<uint64_t, std::deque<TensorKey>> deferred_tensors { };
     bool exclusive;
     bool compression;
+    simsignal_t compressedSize;
+    simsignal_t uncompressedSize;
 };
 
 Define_Module(Sincronia);
@@ -38,6 +40,8 @@ void Sincronia::initialize() {
     chunk_size = par("chunk_size");
     job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
     compression = par("compression");
+    compressedSize = registerSignal("compressedSize");
+    uncompressedSize = registerSignal("uncompressedSize");
 }
 
 void Sincronia::clean_resources_for_tensor(const TensorKey &tensor_key) {
@@ -139,6 +143,9 @@ unsigned Sincronia::StartCollectiveOperations() {
                                          req->getSize(), priority) << endl;
                 req->setPriority(priority);
                 if (compression && size_t(priority) > 1) {
+                    if (req->getRank() == 0) {
+                        emit(compressedSize, req->getSize());
+                    }
                     // compress everything except for priority==1
                     req->setKind(17);
                     EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
@@ -147,6 +154,8 @@ unsigned Sincronia::StartCollectiveOperations() {
                                              req->getWorker_id(), jid_to_add,
                                              layer, req->getSize(), priority)
                                      << endl;
+                } else if (req->getRank() == 0) {
+                    emit(uncompressedSize, req->getSize());
                 }
                 sendDirect(req->dup(),
                         getSimulation()->getModule(req->getWorker_id()),

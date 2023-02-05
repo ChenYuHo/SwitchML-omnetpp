@@ -37,6 +37,9 @@ network TwoLayers
         @statistic[jobWaitTime](record=stats,vector);
         @statistic[jobStartTime](record=vector);
         @statistic[jobPlacementType](record=vector);
+
+        @statistic[compressedSize](record=sum,stats,histogram);
+        @statistic[uncompressedSize](record=sum,stats,histogram);
         int switch_ports = default(16);
         int n_workers = switch_ports*(switch_ports-1);
     types:
