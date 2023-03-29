@@ -300,8 +300,9 @@ void JobDispatcher::handleMessage(cMessage *msg) {
         if (uint32_t(local_copy->getKind())
                 == local_copy->getNum_workers_allocated()) {
             // all workers finished
-            EV_DEBUG << "Finished job " << job->getJob_id() << " at "
-                            << simTime() << endl;
+            EV_DEBUG << "Finished job " << job->getJob_id() << " in "
+                            << simTime() - job->getStart_time()
+                            << " seconds at " << simTime() << endl;
             emit(jobCompletionTime, simTime() - job->getStart_time());
 
             auto jid = job->getJob_id();

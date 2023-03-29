@@ -18,12 +18,18 @@ void NJobSubmitter::handleMessage(cMessage *msg) {
     uint64_t num_gpus = par("num_gpus_per_job");
     uint64_t iters = par("iters");
     std::string m = par("model");
+    double submit_interval = par("submit_interval");
+    auto interval = SimTime(submit_interval, SIMTIME_US);
+    EV_DEBUG << "submit_interval " << submit_interval << " interval " << interval << endl;
+    auto submit_time = SimTime::ZERO;
     uint64_t jid = 1;
     for (int i = 0; i < par("num_jobs").intValue(); ++i) {
         auto job_info = new Job;
         job_info->setGpu(num_gpus);
         job_info->setIters(iters);
-        job_info->setSubmit_time(SimTime::ZERO);
+        job_info->setSubmit_time(submit_time);
+        EV_DEBUG << "submit job " << i << " at " << submit_time << endl;
+        submit_time += interval;
         job_info->setJob_id(jid++);
         if (m == "alexnet") {
             job_info->setModel(alexnet);

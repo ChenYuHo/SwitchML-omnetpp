@@ -155,7 +155,7 @@ unsigned Sincronia::StartCollectiveOperations() {
                                              layer, req->getSize(), priority)
                                      << endl;
                 } else if (req->getRank() == 0) {
-                    emit(uncompressedSize, req->getSize());
+                    emit(uncompressedSize, int(req->getSize()));
                 }
                 sendDirect(req->dup(),
                         getSimulation()->getModule(req->getWorker_id()),

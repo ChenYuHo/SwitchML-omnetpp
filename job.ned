@@ -17,6 +17,7 @@ simple NJobSubmitter like IJobSubmitter
         int num_gpus_per_job = default(8);
         int iters = default(1);
         string model = default("resnet50");
+        double submit_interval @unit(us) = default(0us);
     gates:
         input directin;
         output jobout;
