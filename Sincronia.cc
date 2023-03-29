@@ -99,7 +99,7 @@ unsigned Sincronia::StartCollectiveOperations() {
     if (pending_tensors.empty())
         return 0;
     unsigned started = 0;
-    int priority = 1; // the smaller, the higher priority
+    int priority = 1; // the smaller, the higher priority, 1 is the highest
     for (auto iterator = pending_tensors.begin();
             iterator != pending_tensors.end();) {
         auto &tensor_key = *iterator;
@@ -138,9 +138,8 @@ unsigned Sincronia::StartCollectiveOperations() {
                                          next_chunk_id, req->getNum_chunks(),
                                          req->getSize(), priority) << endl;
                 req->setPriority(priority);
-                // approximately half in pending_tensors will be compressed
-                if (compression
-                        && size_t(priority - 1) * 2 >= pending_tensors.size()) {
+                if (compression && size_t(priority) > 1) {
+                    // compress everything except for priority==1
                     req->setKind(17);
                     EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
                                      << fmt::format(
