@@ -60,6 +60,7 @@ private:
     simsignal_t workerJobCompletionTime;
 
     bool print = false;
+    double compress_probability;
     ofstream ofs;
 };
 

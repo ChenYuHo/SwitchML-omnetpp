@@ -21,6 +21,7 @@ simple TrainingProcess
 {
     parameters:
         bool print_only_rank0 = default(false);
+        double compress_probability = default(0);
         @signal[fullIterTime](type=simtime_t); // per iter, from first FP start to last WU end
         @signal[contiguousIterTime](type=simtime_t); // per iter, from first FP of this iter start to first FP (first WU ends) of the next iter start
         //        @signal[minIdleTime](type=simtime_t); // per iter, time when no FP, BP is ongoing

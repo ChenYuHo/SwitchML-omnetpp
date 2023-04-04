@@ -6,6 +6,7 @@
 Define_Module(TrainingProcess);
 
 void TrainingProcess::initialize() {
+    compress_probability = par("compress_probability");
     fullIterTime = registerSignal("fullIterTime");
     contiguousIterTime = registerSignal("contiguousIterTime");
     idleTime = registerSignal("idleTime");
@@ -45,6 +46,15 @@ void TrainingProcess::startComm(uint64_t layer, uint64_t iter) {
                                          wid, rank, jid, iter, layer, size)
                                  << " at " << simTime() << endl;
             sendDirect(req, collective_scheduler, "directin");
+        } else if (compress_probability > 0
+                && uniform(0, 1) < compress_probability) {
+            req->setKind(17);
+            EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
+                             << fmt::format(
+                                     "\tNone compress Worker {} Job {} layer {}, size {}",
+                                     req->getWorker_id(), jid, layer,
+                                     req->getSize()) << endl;
+            sendDirect(req, getParentModule(), "directin");
         } else { // send directly to Worker
             sendDirect(req, getParentModule(), "directin");
         }
