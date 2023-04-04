@@ -17,20 +17,31 @@ void NJobSubmitter::handleMessage(cMessage *msg) {
     delete msg;
     uint64_t num_gpus = par("num_gpus_per_job");
     uint64_t iters = par("iters");
-    std::string m = par("model");
+    std::string model = par("model");
     double submit_interval = par("submit_interval");
     auto interval = SimTime(submit_interval, SIMTIME_US);
     EV_DEBUG << "submit_interval " << submit_interval << " interval " << interval << endl;
     auto submit_time = SimTime::ZERO;
     uint64_t jid = 1;
-    for (int i = 0; i < par("num_jobs").intValue(); ++i) {
+    std::vector<std::string> models;
+    std::istringstream iss(model);
+    std::string model_str;
+    while (std::getline(iss, model_str, ',')) {
+        models.push_back(model_str);
+    }
+    int num_jobs = par("num_jobs");
+    int min_size = std::min(num_jobs, int(models.size()));
+
+    for (int i = 0; i < min_size; ++i) {
         auto job_info = new Job;
         job_info->setGpu(num_gpus);
         job_info->setIters(iters);
         job_info->setSubmit_time(submit_time);
-        EV_DEBUG << "submit job " << i << " at " << submit_time << endl;
         submit_time += interval;
         job_info->setJob_id(jid++);
+        auto m = models[i];
+        EV_DEBUG << "submit job " << i << " model " << m << " at "
+                        << submit_time << endl;
         if (m == "alexnet") {
             job_info->setModel(alexnet);
         } else if (m == "vgg11") {
