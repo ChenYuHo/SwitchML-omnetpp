@@ -113,7 +113,7 @@ void Worker::startTransmitting(SwitchMLPacket *pkt) {
     if (retransmission_enabled) {
         schedule_timeout_retransmission(pkt);
         if (pkt->getKind() == 9) {
-            // incoming is a retransmission pkt
+            // This is a retransmission pkt
             pkt->setKind(99); // anything not 9: mark as non retransmission pkts
             emit(pktRetransmission, pkt);
         }
@@ -298,7 +298,7 @@ void Worker::handleMessage(cMessage *msg) {
             auto sz = req->getSize();
             req->setSize(sz > 3 ? sz / 4 : 1); // CNat compress size
             req->setKind(0);
-            scheduleAfter(SimTime(double(sz)/44.525520170, SIMTIME_NS), req); // CNat compress time
+            scheduleAfter(SimTime(double(sz) / 44.525520170, SIMTIME_NS), req); // CNat compress time
             break;
         }
         default:
@@ -312,29 +312,26 @@ void Worker::handleMessage(cMessage *msg) {
     auto p = (SwitchMLPacket*) (msg);
 
     if (retransmission_enabled) {
-        auto &tensor_key = p->getTensor_key();
         if (p->getKind() == 9) {
-            // timeout retransmission pkt
+            // Timer for timeout retransmission pkt fired! so do retransmission
             EV_DEBUG << "Worker " << getId()
                             << " try_send retransmission packet slot "
                             << p->getSlot() << " at " << simTime() << endl;
             try_send(p);
             return;
-        } else if (
-                p->getIter() == iter_of_tkey[tensor_key] ?
-                        p->getChunk() < chunk_of_tkey[tensor_key] :
-                        p->getIter() < iter_of_tkey[tensor_key]) {
-//        } else if (p->getTimestamp()
-//                < obsolete_pkt_timestamp[p->getTensor_key()]) {
-            // these packets are sent out before the transmission is marked complete, so they are obsolete (now that the transmission is complete)
-            EV_DEBUG << "Worker " << getId()
-                            << " received obsolete packet slot " << p->getSlot()
-                            << " at " << simTime() << endl;
+
+        }
+
+        // otherwise, need to cancel previously scheduled retransmission
+        auto &tensor_key = p->getTensor_key();
+        if (p->getIter() == iter_of_tkey[tensor_key] ?
+                p->getChunk() < chunk_of_tkey[tensor_key] :
+                p->getIter() < iter_of_tkey[tensor_key]) {
             auto rpkt = retransmission_pkts[tensor_key][p->getSlot()];
             if (queue.contains(rpkt)) {
-                rpkt->setKind(10); // will be canceled when queue pops
-            } else if (rpkt->isScheduled()) {
-                cancelAndDelete(rpkt);
+                rpkt->setKind(10);
+                // if not scheduled yet, mark so it will be canceled when queue pops
+                // if scheduled (sent), let it be
             }
             delete p;
             return;
@@ -359,9 +356,10 @@ void Worker::handleMessage(cMessage *msg) {
         if (retransmission_enabled) {
             auto rpkt = retransmission_pkts[p->getTensor_key()][p->getSlot()];
             if (queue.contains(rpkt)) {
-                rpkt->setKind(10); // will be canceled when queue pops
-            } else if (rpkt->isScheduled()) {
-                cancelAndDelete(rpkt);
+                rpkt->setKind(10);
+                // if not scheduled yet, mark so it will be canceled when queue pops
+
+                // if scheduled (sent), let it be
             }
         }
 
