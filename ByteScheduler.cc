@@ -22,11 +22,13 @@ private:
     void clean_resources_for_tensor(const TensorKey&);
     void initialize() override;
     void handleMessage(cMessage *msg) override;
+    double compress_probability;
 };
 
 Define_Module(ByteScheduler);
 
 void ByteScheduler::initialize() {
+    compress_probability = par("compress_probability");
     chunk_size = par("chunk_size");
     job_dispatcher = (JobDispatcher*) getModuleByPath("^.job_dispatcher");
 }
@@ -64,8 +66,19 @@ void ByteScheduler::StartOneCollectiveOperation(uint64_t jid) {
         }
     } // else will be chunk_size
 //    EV_DEBUG << "ByteScheduler notifies Workers ";
+    bool compress = compress_probability > 0
+            && uniform(0, 1) < compress_probability;
     for (auto &req : requests) {
-//        EV_DEBUG << req->getWorker_id() << " ";
+        if (compress) {
+            req->setKind(17);
+            EV_DETAIL << "[CollectiveScheduler]\t" << simTime()
+                             << fmt::format(
+                                     "\tByteScheduler compress Worker {} Job {} layer {}, size {} priority {}",
+                                     req->getWorker_id(), jid, tensor_key.layer,
+                                     req->getSize(), req->getChunk_id())
+                             << endl;
+        }
+
         sendDirect(req->dup(), getSimulation()->getModule(req->getWorker_id()),
                 "directin");
         req->setChunk_id(next_chunk_id);

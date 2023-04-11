@@ -51,6 +51,7 @@ simple DeficitRoundRobinExclusive like ICollectiveScheduler
 simple ByteScheduler like ICollectiveScheduler
 {
     parameters:
+        double compress_probability = default(0);
         int chunk_size = default(262144);
     gates:
         input directin;
