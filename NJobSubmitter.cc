@@ -20,7 +20,8 @@ void NJobSubmitter::handleMessage(cMessage *msg) {
     std::string model = par("model");
     double submit_interval = par("submit_interval");
     auto interval = SimTime(submit_interval, SIMTIME_US);
-    EV_DEBUG << "submit_interval " << submit_interval << " interval " << interval << endl;
+    EV_DEBUG << "submit_interval " << submit_interval << " interval "
+                    << interval << endl;
     auto submit_time = SimTime::ZERO;
     uint64_t jid = 1;
     std::vector<std::string> models;
@@ -29,17 +30,19 @@ void NJobSubmitter::handleMessage(cMessage *msg) {
     while (std::getline(iss, model_str, ',')) {
         models.push_back(model_str);
     }
+    if (models.empty())
+        models.push_back("");
     int num_jobs = par("num_jobs");
-    int min_size = std::min(num_jobs, int(models.size()));
+    int num_models = models.size();
 
-    for (int i = 0; i < min_size; ++i) {
+    for (int i = 0; i < num_jobs; ++i) {
         auto job_info = new Job;
         job_info->setGpu(num_gpus);
         job_info->setIters(iters);
         job_info->setSubmit_time(submit_time);
         submit_time += interval;
         job_info->setJob_id(jid++);
-        auto m = models[i];
+        auto m = models[i % num_models];
         EV_DEBUG << "submit job " << i << " model " << m << " at "
                         << submit_time << endl;
         if (m == "alexnet") {
