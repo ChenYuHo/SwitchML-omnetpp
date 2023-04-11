@@ -50,7 +50,9 @@ private:
     simsignal_t jobStartTime;
     simsignal_t jobWaitTime;
     simsignal_t jobPlacementType;
+    simsignal_t jctInflation;
     bool tryDispatchAJob();
+    int bandwidth;
 
     void initialize(int) override;
     void handleMessage(cMessage *msg) override;

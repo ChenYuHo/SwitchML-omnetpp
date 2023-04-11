@@ -33,6 +33,7 @@ network TwoLayers
 //        @statistic[schedulingEfficiencyWu](source=sum(minIdleTimeWu)/sum(idleTimeWu); record=last);
 
         @statistic[jobCompletionTime](record=stats,vector); // from first worker start to last worker finish for a job
+        @statistic[jctInflation](record=stats,vector); // from first worker start to last worker finish for a job
         @statistic[jobSubmissionTime](record=vector);
         @statistic[jobWaitTime](record=stats,vector);
         @statistic[jobStartTime](record=vector);

@@ -41,6 +41,7 @@ simple JobDispatcher
     parameters:
         @signal[iterTime](type=simtime_t);
         @signal[jobCompletionTime](type=simtime_t);
+        @signal[jctInflation](type=double);
         @signal[jobSubmissionTime](type=simtime_t);
         @signal[jobWaitTime](type=simtime_t);
         @signal[jobStartTime](type=simtime_t);
