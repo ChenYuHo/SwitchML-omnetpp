@@ -9,6 +9,8 @@ network TwoLayers
     parameters:
         @statistic[nTimeouts](source=count(pktRetransmission); record=last); // from all workers
         @statistic[txBits](source=packetBits(pktOut); record=sum); // from all workers
+        @statistic[maxWorkerQueueLength](source=workerQueueLength; record=max); // from all workers
+        @statistic[maxSwitchQueueLength](source=switchQueueLength; record=max); // from all switches
         // @statistic[rxBits](source=sum(packetBits(pktIn)); record=last); // ignored because for SwitchML it will be the same as txBits
         @statistic[totalCommTime](source=commTime; record=sum); // time can do first comm until last comm done (per iter, for all workers)
         @statistic[totalRealCommTime](source=realCommTime; record=sum); // time starting every SwitchML transmission until its end (per iter, for all workers)

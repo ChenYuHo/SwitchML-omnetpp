@@ -30,6 +30,7 @@ private:
     void try_send(cPacket*, int);
     void startTransmitting(cMessage*, int);
     Switch *upper_level_switch;
+    simsignal_t switchQueueLength;
 };
 
 #endif /* SWITCH_H_ */

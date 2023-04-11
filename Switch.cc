@@ -21,6 +21,7 @@ void Switch::initialize() {
         endTransmissionEvents[gid] = new cPacket("endTxEvent", 0, gid);
         channels[gid] = g->findTransmissionChannel();
     }
+    switchQueueLength = registerSignal("switchQueueLength");
 }
 
 void Switch::clean_resources_for_tensor(const TensorKey &tensor_key) {
@@ -44,6 +45,7 @@ void Switch::try_send(cPacket *pkt, int gid) {
             auto sb = (SwitchMLPacket*) b;
             return sa->getPriority() - sb->getPriority();
         }).first->second.insert(pkt);
+        emit(switchQueueLength, queues[gid].getLength());
 //        EV_DEBUG << "queued pkt slot " << ((SwitchMLPacket*) pkt)->getSlot()
 //                        << endl;
     } else {

@@ -59,6 +59,7 @@ private:
 
     simsignal_t pktOut;
     simsignal_t pktRetransmission;
+    simsignal_t workerQueueLength;
 //    simsignal_t pktIn;
 };
 

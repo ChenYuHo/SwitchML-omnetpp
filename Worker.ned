@@ -3,6 +3,7 @@ simple Worker
     parameters:
         @signal[pktOut](type=cPacket);
         @signal[pktRetransmission](type=cPacket);
+        @signal[workerQueueLength](type=int);
         bool packet_simulation = default(true);
         int MTU @mutable = default(0);
         int num_slots = default(512);

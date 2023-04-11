@@ -51,6 +51,7 @@ void Worker::initialize() {
     job_dispatcher = getParentModule()->getSubmodule("job_dispatcher");
     pktOut = registerSignal("pktOut");
     pktRetransmission = registerSignal("pktRetransmission");
+    workerQueueLength = registerSignal("workerQueueLength");
 //    pktIn = registerSignal("pktIn");
 
 //    auto p = new SwitchMLPacket();
@@ -91,6 +92,7 @@ void Worker::try_send(SwitchMLPacket *pkt) {
         // We are currently busy, so just queue up the packet.
         pkt->setPriority(tensor_priority[pkt->getTensor_key()]);
         queue.insert(pkt);
+        emit(workerQueueLength, queue.getLength());
     } else {
         // We are idle, so we can start transmitting right away.
         startTransmitting(pkt);
