@@ -144,7 +144,7 @@ unsigned Sincronia::StartCollectiveOperations() {
                 req->setPriority(priority);
                 if (compression && size_t(priority) > 1) {
                     if (req->getRank() == 0) {
-                        emit(compressedSize, req->getSize());
+                        emit(compressedSize, int(req->getSize()));
                     }
                     // compress everything except for priority==1
                     req->setKind(17);
