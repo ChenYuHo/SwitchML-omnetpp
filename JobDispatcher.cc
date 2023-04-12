@@ -401,17 +401,16 @@ void JobDispatcher::handleMessage(cMessage *msg) {
                                     1.740384326802, 1.98544017313,
                                     2.234498498207, 2.497596511112 } } } } };
 
-            emit(jctInflation,
-                    jct.dbl()
-                            / stats.at(bandwidth).at(local_copy->getModel()).at(
-                                    local_copy->getIters()));
-            EV_DEBUG << jct.dbl() << " "
-                            << stats.at(bandwidth).at(local_copy->getModel()).at(
-                                    local_copy->getIters()) << " "
-                            << jct.dbl()
-                                    / stats.at(bandwidth).at(
-                                            local_copy->getModel()).at(
-                                            local_copy->getIters()) << endl;
+            auto iters = local_copy->getIters();
+            double t;
+            if (iters > 10) {
+                t = stats.at(bandwidth).at(local_copy->getModel())[1] * iters;
+            } else {
+                t = stats.at(bandwidth).at(local_copy->getModel()).at(
+                        local_copy->getIters());
+            }
+            emit(jctInflation, jct.dbl() / t);
+            EV_DEBUG << jct.dbl() << " " << t << " " << jct.dbl() / t << endl;
 
             auto jid = job->getJob_id();
             for (auto tor_id : switches_for_job[jid]) {
