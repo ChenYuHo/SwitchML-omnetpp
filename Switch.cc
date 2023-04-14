@@ -22,6 +22,7 @@ void Switch::initialize() {
         channels[gid] = g->findTransmissionChannel();
     }
     switchQueueLength = registerSignal("switchQueueLength");
+    switchTotalQueueLength = registerSignal("switchTotalQueueLength");
 }
 
 void Switch::clean_resources_for_tensor(const TensorKey &tensor_key) {
@@ -46,6 +47,7 @@ void Switch::try_send(cPacket *pkt, int gid) {
             return sa->getPriority() - sb->getPriority();
         }).first->second.insert(pkt);
         emit(switchQueueLength, queues[gid].getLength());
+        emit(switchTotalQueueLength, ++total_queued_pkts);
 //        EV_DEBUG << "queued pkt slot " << ((SwitchMLPacket*) pkt)->getSlot()
 //                        << endl;
     } else {
@@ -95,6 +97,7 @@ void Switch::handleMessage(cMessage *msg) {
         port_isBusy[gid] = false;
         if (!queue.isEmpty()) {
 //            EV_DEBUG << "Start next transmission of gate " << gid << endl;
+            --total_queued_pkts;
             startTransmitting((cMessage*) queue.pop(), gid);
         }
         return;

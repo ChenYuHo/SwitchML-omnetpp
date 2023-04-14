@@ -31,6 +31,8 @@ private:
     void startTransmitting(cMessage*, int);
     Switch *upper_level_switch;
     simsignal_t switchQueueLength;
+    simsignal_t switchTotalQueueLength;
+    int total_queued_pkts { 0 };
 };
 
 #endif /* SWITCH_H_ */
