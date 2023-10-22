@@ -78,9 +78,8 @@ void CSVJobSubmitter::handleMessage(cMessage *msg) {
     uint64_t jid = 0;
     for (auto job_info : jobs) {
         job_info->setJob_id(jid++);
-        sendDelayed(job_info,
-                submit_all_when_start ? 0 : job_info->getSubmit_time(),
-                "jobout"); // to job dispatcher
+	if (submit_all_when_start) send(job_info, "jobout");
+	else sendDelayed(job_info, job_info->getSubmit_time(), "jobout");
     }
 }
 
