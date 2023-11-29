@@ -403,15 +403,16 @@ void JobDispatcher::handleMessage(cMessage *msg) {
 
             auto iters = local_copy->getIters();
             double t;
-            if (iters > 10) {
-                t = stats.at(bandwidth).at(local_copy->getModel())[1] * iters;
-            } else {
-                t = stats.at(bandwidth).at(local_copy->getModel()).at(
-                        local_copy->getIters());
+	    if (stats.find(bandwidth) != stats.end()) {
+                if (iters > 10) {
+                    t = stats.at(bandwidth).at(local_copy->getModel())[1] * iters;
+                } else {
+                    t = stats.at(bandwidth).at(local_copy->getModel()).at(
+                            local_copy->getIters());
+                }
+                emit(jctInflation, jct.dbl() / t);
+                EV_DEBUG << jct.dbl() << " " << t << " " << jct.dbl() / t << endl;
             }
-            emit(jctInflation, jct.dbl() / t);
-            EV_DEBUG << jct.dbl() << " " << t << " " << jct.dbl() / t << endl;
-
             auto jid = job->getJob_id();
             for (auto tor_id : switches_for_job[jid]) {
                 ((Switch*) (getSimulation()->getModule(tor_id)))->clean_resources_for_job(
